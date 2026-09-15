@@ -1,0 +1,105 @@
+"use client";
+
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { Spinner } from "@/components/Spinner";
+
+function LoginForm() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const next = params.get("next") || "/";
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error) {
+      setError(error.message);
+      setBusy(false);
+      return;
+    }
+    router.replace(next);
+    router.refresh();
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="card w-full max-w-sm p-6">
+      <div className="mb-5 flex items-center gap-2.5">
+        <span className="grid size-7 place-items-center rounded-md bg-neutral-900 text-[13px] font-bold text-white">
+          P
+        </span>
+        <div className="leading-tight">
+          <div className="text-[15px] font-semibold">Publish Tracker</div>
+          <div className="text-[11px] text-neutral-500">Store submissions</div>
+        </div>
+      </div>
+
+      <label className="label" htmlFor="email">
+        Work email
+      </label>
+      <input
+        id="email"
+        type="email"
+        required
+        autoComplete="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        className="field mb-3"
+      />
+
+      <label className="label" htmlFor="password">
+        Password
+      </label>
+      <input
+        id="password"
+        type="password"
+        required
+        autoComplete="current-password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        className="field"
+      />
+
+      {error && (
+        <p className="mt-3 rounded-md bg-rose-50 px-2.5 py-2 text-[12px] text-rose-700">
+          {error}
+        </p>
+      )}
+
+      <button type="submit" disabled={busy} className="btn btn-primary mt-5 w-full justify-center">
+        {busy ? (
+          <>
+            <Spinner /> Signing in…
+          </>
+        ) : (
+          "Sign in"
+        )}
+      </button>
+
+      <p className="mt-4 text-[11px] leading-relaxed text-neutral-400">
+        Accounts are created by an admin in the Supabase dashboard under
+        Authentication → Users.
+      </p>
+    </form>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <div className="grid min-h-screen place-items-center p-6">
+      <Suspense>
+        <LoginForm />
+      </Suspense>
+    </div>
+  );
+}
