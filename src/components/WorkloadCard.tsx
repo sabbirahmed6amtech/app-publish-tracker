@@ -206,7 +206,7 @@ export function WorkloadCard({
         </p>
 
         <Link
-          href="/apps?attention=1"
+          href="/reports?tab=sheet&attention=1"
           className="mt-3 inline-block text-[12px] font-medium text-neutral-500 hover:text-neutral-900"
         >
           Review what needs action →

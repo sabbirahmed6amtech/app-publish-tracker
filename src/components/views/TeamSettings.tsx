@@ -1,12 +1,10 @@
-import { PageHeader, Tag } from "@/components/PageHeader";
+import { Tag } from "@/components/PageHeader";
 import { DeleteButton } from "@/components/RowActions";
 import { TeamMemberDialog } from "@/components/dialogs/TeamMemberDialog";
 import { flatten, getClients, getTeam, teamIndex } from "@/lib/queries";
 import { deleteTeamMember, setTeamMemberActive } from "@/lib/actions";
 
-export const dynamic = "force-dynamic";
-
-export default async function TeamPage() {
+export async function TeamSettings() {
   const [team, clients] = await Promise.all([getTeam(), getClients()]);
   const rows = flatten(clients, teamIndex(team));
 
@@ -20,17 +18,14 @@ export default async function TeamPage() {
 
   return (
     <>
-      <PageHeader
-        title="Team"
-        meta={`${active.length} active · ${team.length} total`}
-        actions={<TeamMemberDialog trigger="+ Add member" />}
-      />
-
-      <div className="card mb-4 px-4 py-3 text-[13px] text-neutral-600">
-        Anyone you add under{" "}
-        <strong className="font-medium text-neutral-900">Authentication → Users</strong> in
-        Supabase appears here automatically and can be assigned work. Add someone here
-        directly if they do the work but never sign in.
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-[13px] text-muted-foreground">
+          {active.length} active · {team.length} total. Anyone you add under{" "}
+          <strong className="font-medium text-foreground">Authentication → Users</strong> in
+          Supabase appears here automatically and can be assigned work. Add someone here
+          directly if they do the work but never sign in.
+        </p>
+        <TeamMemberDialog trigger="+ Add member" className="btn btn-primary" />
       </div>
 
       <section className="card overflow-hidden">

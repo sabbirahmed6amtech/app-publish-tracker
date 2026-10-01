@@ -9,6 +9,9 @@ import type {
   Client,
   ClientFull,
   Keystore,
+  LineBadge,
+  Product,
+  ProductLine,
   Platform,
   PublisherAccount,
   Release,
@@ -16,13 +19,15 @@ import type {
   TeamMember,
 } from "@/lib/types";
 
-const CLIENT_TREE = "*, publisher_accounts(*), keystores(*), releases(*, apps(*))";
+const CLIENT_TREE =
+  "*, publisher_accounts(*), keystores(*), products(*), releases(*, apps(*))";
 
 function sortTree(c: ClientFull): ClientFull {
   c.publisher_accounts = (c.publisher_accounts ?? []).sort((a, b) =>
     a.platform.localeCompare(b.platform),
   );
   c.keystores = (c.keystores ?? []).sort((a, b) => a.name.localeCompare(b.name));
+  c.products = sortProducts(c.products ?? []);
   // Newest release first — that is the one being worked on.
   c.releases = (c.releases ?? []).sort(
     (a, b) => b.started_on.localeCompare(a.started_on) || b.version.localeCompare(a.version),
@@ -33,6 +38,12 @@ function sortTree(c: ClientFull): ClientFull {
     );
   }
   return c;
+}
+
+export function sortProducts(products: Product[]): Product[] {
+  return products.sort(
+    (a, b) => a.sort_order - b.sort_order || a.project_name.localeCompare(b.project_name),
+  );
 }
 
 /**
@@ -85,6 +96,7 @@ export type ReleaseDetail = {
   client: Client;
   accounts: PublisherAccount[];
   keystores: Keystore[];
+  products: Product[];
   siblings: Release[];
 };
 
@@ -94,7 +106,9 @@ export const getRelease = cache(async function getRelease(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("releases")
-    .select("*, apps(*), clients(*, publisher_accounts(*), keystores(*), releases(*))")
+    .select(
+      "*, apps(*), clients(*, publisher_accounts(*), keystores(*), products(*), releases(*))",
+    )
     .eq("id", releaseId)
     .maybeSingle();
 
@@ -106,6 +120,7 @@ export const getRelease = cache(async function getRelease(
     clients: Client & {
       publisher_accounts: PublisherAccount[];
       keystores: Keystore[];
+      products: Product[];
       releases: Release[];
     };
   };
@@ -124,6 +139,7 @@ export const getRelease = cache(async function getRelease(
       a.platform.localeCompare(b.platform),
     ),
     keystores: (clients.keystores ?? []).sort((a, b) => a.name.localeCompare(b.name)),
+    products: sortProducts(clients.products ?? []),
     siblings: (clients.releases ?? []).sort(
       (a, b) => b.started_on.localeCompare(a.started_on) || b.version.localeCompare(a.version),
     ),
@@ -228,4 +244,61 @@ export async function getRecentActivity(limit = 15) {
   return (data ?? []) as (AppEvent & {
     apps: { app_name: string; project_name: string; release_id: string } | null;
   })[];
+}
+
+/** The signed-in user's team member id — what "Me" means in filters. */
+export const getCurrentMemberId = cache(async function getCurrentMemberId(): Promise<
+  string | null
+> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data } = await supabase
+    .from("team_members")
+    .select("id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  return data?.id ?? null;
+});
+
+/** Product lines with their projects, in display order. */
+export const getProductLines = cache(async function getProductLines(): Promise<ProductLine[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("product_lines")
+    .select("id, name, logo_path, sort_order, product_line_projects(project_name, sort_order)")
+    .order("sort_order")
+    .order("name");
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map((l) => ({
+    id: l.id,
+    name: l.name,
+    logo_path: l.logo_path,
+    logo_url: l.logo_path
+      ? supabase.storage.from("logos").getPublicUrl(l.logo_path).data.publicUrl
+      : null,
+    sort_order: l.sort_order,
+    projects: (l.product_line_projects ?? [])
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((p) => p.project_name),
+  }));
+});
+
+/** project name -> its line's name and logo, for badges anywhere an app shows. */
+export function lineBadges(lines: ProductLine[]): Record<string, LineBadge> {
+  const out: Record<string, LineBadge> = {};
+  for (const l of lines) {
+    for (const p of l.projects) out[p] = { line: l.name, logo: l.logo_url };
+  }
+  return out;
+}
+
+/** Every project worth suggesting: the product lines' plus any already in use. */
+export function projectSuggestions(lines: ProductLine[], clients: ClientFull[]): string[] {
+  const names = new Set(lines.flatMap((l) => l.projects));
+  for (const c of clients) for (const p of c.products) names.add(p.project_name);
+  return [...names].sort((a, b) => a.localeCompare(b));
 }

@@ -7,18 +7,29 @@ import { rowsToCsv } from "@/lib/csv";
 import { reportFromRows } from "@/lib/report";
 import { CopyReportButton } from "@/components/CopyReportButton";
 import { StatusSelect } from "@/components/RowActions";
-import type { AppRow, AppStatus, Platform } from "@/lib/types";
+import { InlineAssignee, InlineText } from "@/components/InlineEdit";
+import { ProjectLogo } from "@/components/ProjectLogo";
+import { StoreIcon } from "@/components/StoreIcon";
+import type { AppRow, AppStatus, LineBadge, Platform, TeamMember } from "@/lib/types";
 
 type Sort = { key: "client" | "project" | "app" | "status" | "person"; dir: 1 | -1 };
 
 export function AppsTable({
   rows,
+  team,
+  badges,
+  lineNames,
   initialStatus = "",
   initialPlatform = "",
   initialAttention = false,
   initialMinAge = 0,
 }: {
   rows: AppRow[];
+  team: TeamMember[];
+  /** project name -> product line logo */
+  badges: Record<string, LineBadge>;
+  /** Product line names, so the report can shorten "6amMart-User-App" to "User". */
+  lineNames: string[];
   initialStatus?: AppStatus | "";
   initialPlatform?: Platform | "";
   initialAttention?: boolean;
@@ -117,7 +128,7 @@ export function AppsTable({
   const active = q || platform || status || project || person || attentionOnly || minAge > 0;
 
   // One report covering every release still visible under the filters.
-  const report = useMemo(() => reportFromRows(filtered), [filtered]);
+  const report = useMemo(() => reportFromRows(filtered, lineNames), [filtered, lineNames]);
   const releaseCount = useMemo(
     () => new Set(filtered.map((r) => r.release_id)).size,
     [filtered],
@@ -268,12 +279,26 @@ export function AppsTable({
       ) : groups ? (
         <div className="space-y-3">
           {groups.map((g) => (
-            <GroupCard key={g[0].release_id} rows={g} sort={sort} setSort={setSort} />
+            <GroupCard
+              key={g[0].release_id}
+              rows={g}
+              team={team}
+              badges={badges}
+              sort={sort}
+              setSort={setSort}
+            />
           ))}
         </div>
       ) : (
         <div className="card overflow-x-auto">
-          <Table rows={filtered} showRelease sort={sort} setSort={setSort} />
+          <Table
+            rows={filtered}
+            team={team}
+            badges={badges}
+            showRelease
+            sort={sort}
+            setSort={setSort}
+          />
         </div>
       )}
     </div>
@@ -282,10 +307,14 @@ export function AppsTable({
 
 function GroupCard({
   rows,
+  team,
+  badges,
   sort,
   setSort,
 }: {
   rows: AppRow[];
+  team: TeamMember[];
+  badges: Record<string, LineBadge>;
   sort: Sort;
   setSort: (s: Sort) => void;
 }) {
@@ -310,7 +339,7 @@ function GroupCard({
         </div>
       </div>
       <div className="overflow-x-auto">
-        <Table rows={rows} sort={sort} setSort={setSort} />
+        <Table rows={rows} team={team} badges={badges} sort={sort} setSort={setSort} />
       </div>
     </section>
   );
@@ -318,11 +347,15 @@ function GroupCard({
 
 function Table({
   rows,
+  team,
+  badges,
   showRelease = false,
   sort,
   setSort,
 }: {
   rows: AppRow[];
+  team: TeamMember[];
+  badges: Record<string, LineBadge>;
   showRelease?: boolean;
   sort: Sort;
   setSort: (s: Sort) => void;
@@ -355,7 +388,7 @@ function Table({
           <Th label="App name" sortKey="app" />
           <Th label="Assigned to" sortKey="person" />
           <Th label="Status" sortKey="status" />
-          <Th label="Build" />
+          <Th label="Build number" />
           <th className="th text-right">Link</th>
         </tr>
       </thead>
@@ -378,17 +411,27 @@ function Table({
                 </span>
               </td>
             )}
-            <td className="td whitespace-nowrap text-neutral-500">
-              {PLATFORMS[r.platform].label}
+            <td className="td whitespace-nowrap text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <StoreIcon platform={r.platform} size={13} />
+                {PLATFORMS[r.platform].label}
+              </span>
             </td>
-            <td className="td whitespace-nowrap font-medium text-neutral-800">
-              {r.project_name}
+            <td className="td whitespace-nowrap font-medium">
+              <span className="flex items-center gap-2">
+                <ProjectLogo badge={badges[r.project_name]} project={r.project_name} size="xs" />
+                {r.project_name}
+              </span>
             </td>
             <td className="td">{r.app_name || <span className="text-neutral-300">—</span>}</td>
             <td className="td whitespace-nowrap">
-              {r.assignee_name || r.release_assignee_name || (
-                <span className="text-neutral-300">—</span>
-              )}
+              <InlineAssignee
+                appId={r.id}
+                value={r.assigned_to}
+                team={team}
+                name={r.assignee_name}
+                fallbackName={r.release_assignee_name}
+              />
             </td>
             <td className="td">
               <div className="flex items-center gap-2">
@@ -403,8 +446,15 @@ function Table({
                 )}
               </div>
             </td>
-            <td className="td whitespace-nowrap font-mono text-[12px] text-neutral-600">
-              {r.build_version || <span className="font-sans text-neutral-300">—</span>}
+            <td className="td whitespace-nowrap">
+              <InlineText
+                appId={r.id}
+                field="build_version"
+                value={r.build_version}
+                placeholder="Add build number"
+                mono
+                className="w-36"
+              />
             </td>
             <td className="td text-right">
               {r.store_url ? (

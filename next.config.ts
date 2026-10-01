@@ -3,6 +3,15 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Self-contained server in .next/standalone, for handing out a runnable build.
   output: "standalone",
+  // Pages that were folded into the four main sections.
+  async redirects() {
+    return [
+      { source: "/board", destination: "/", permanent: false },
+      { source: "/apps", destination: "/reports?tab=sheet", permanent: false },
+      { source: "/team", destination: "/settings", permanent: false },
+      { source: "/import", destination: "/settings?tab=data", permanent: false },
+    ];
+  },
   experimental: {
     serverActions: { bodySizeLimit: "4mb" },
     // Every page is force-dynamic, and Next's default client cache for dynamic

@@ -1,22 +1,21 @@
-import { PageHeader } from "@/components/PageHeader";
 import { ImportForm } from "@/components/ImportForm";
 import { ExportButton } from "@/components/ExportButton";
 import { flatten, getClients, getTeam, teamIndex } from "@/lib/queries";
 import { EXPORT_HEADERS } from "@/lib/csv";
 
-export const dynamic = "force-dynamic";
-
-export default async function ImportPage() {
+/** Move the old sheet in, or take a snapshot out. */
+export async function DataSettings() {
   const [clients, roster] = await Promise.all([getClients(), getTeam()]);
   const rows = flatten(clients, teamIndex(roster));
 
   return (
     <>
-      <PageHeader
-        title="Import / export"
-        meta="Move the old sheet in, or take a snapshot out."
-        actions={<ExportButton rows={rows} label={`Export all ${rows.length} apps`} />}
-      />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[13px] text-muted-foreground">
+          Move the old sheet in, or take a snapshot out.
+        </p>
+        <ExportButton rows={rows} label={`Export all ${rows.length} apps`} />
+      </div>
 
       <ImportForm />
 
@@ -35,9 +34,13 @@ export default async function ImportPage() {
             rows sharing a version land in the same release.
           </li>
           <li>
-            Apps match on{" "}
-            <strong className="font-medium">release + account + project name</strong>, so
-            re-importing an edited export updates rather than duplicates.
+            A client&apos;s apps match on{" "}
+            <strong className="font-medium">store account + project name</strong>; the
+            sheet&apos;s app name and store link update the app itself.
+          </li>
+          <li>
+            Each row is that app&apos;s submission in the release, so re-importing an edited
+            export updates rather than duplicates.
           </li>
         </ul>
 

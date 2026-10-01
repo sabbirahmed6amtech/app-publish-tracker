@@ -15,6 +15,7 @@ export function CodeEditor({
   placeholder,
   rows = 6,
   readOnly = false,
+  onValueChange,
 }: {
   id?: string;
   name: string;
@@ -22,8 +23,13 @@ export function CodeEditor({
   placeholder?: string;
   rows?: number;
   readOnly?: boolean;
+  onValueChange?: (value: string) => void;
 }) {
-  const [value, setValue] = useState(defaultValue);
+  const [value, setRawValue] = useState(defaultValue);
+  const setValue = (next: string) => {
+    setRawValue(next);
+    onValueChange?.(next);
+  };
   const lines = Math.max(value.split("\n").length, rows);
   const area = useRef<HTMLTextAreaElement>(null);
 

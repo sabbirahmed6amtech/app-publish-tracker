@@ -1,12 +1,14 @@
 -- ============================================================================
 -- App Publish Tracker — schema v2 (releases)
 --
--- A client is published in rounds. Each round is a RELEASE with its own
+-- A client is published in versions. Each one is a RELEASE with its own
 -- version, its own dates, and the person who did the work:
 --
 --   client  ->  publisher_account   (stable: the store accounts they own)
---           ->  release             (one publication round, versioned)
---                 -> app            (what was submitted, to which account)
+--           ->  keystore            (signing keys the apps share)
+--           ->  product             (stable: the client's apps, one per store)
+--           ->  release             (one versioned publication)
+--                 -> app            (one product's submission in that release)
 --
 -- Run this in the Supabase SQL editor. It DROPS the v1 tables first, so
 -- anything currently stored is discarded.
@@ -17,6 +19,10 @@ create extension if not exists "pgcrypto";
 drop table if exists app_events         cascade;
 drop table if exists team_members       cascade;
 drop table if exists apps               cascade;
+drop table if exists product_line_projects cascade;
+drop table if exists product_lines      cascade;
+drop table if exists products           cascade;
+drop table if exists keystores          cascade;
 drop table if exists releases           cascade;
 drop table if exists publisher_accounts cascade;
 drop table if exists clients            cascade;
@@ -75,7 +81,7 @@ create table publisher_accounts (
   unique (client_id, platform)
 );
 
--- One publication round for one client.
+-- One versioned release for one client.
 create table releases (
   id           uuid primary key default gen_random_uuid(),
   client_id    uuid not null references clients (id) on delete cascade,
@@ -109,10 +115,32 @@ create table keystores (
 
 create index keystores_client_idx on keystores (client_id);
 
--- What was actually submitted in a release, and to which store account.
+-- A client's permanent apps: set up once, submitted every release. Each store
+-- listing is its own product (the User app on Play and on iOS are two).
+create table products (
+  id           uuid primary key default gen_random_uuid(),
+  client_id    uuid not null references clients (id) on delete cascade,
+  account_id   uuid not null references publisher_accounts (id) on delete cascade,
+  project_name text not null,                -- 6amMart-User-App, StackFood Store …
+  app_name     text not null default '',     -- the store listing name
+  keystore_id  uuid references keystores (id) on delete set null,
+  store_url    text,
+  note         text,
+  sort_order   integer not null default 0,
+  archived     boolean not null default false, -- left out of new releases
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  unique (account_id, project_name)
+);
+
+create index products_client_idx on products (client_id);
+
+-- One product's submission in a release. The identity columns (account,
+-- project, app name, keystore, store link) mirror the product via trigger.
 create table apps (
   id                uuid primary key default gen_random_uuid(),
   release_id        uuid not null references releases (id) on delete cascade,
+  product_id        uuid not null references products (id) on delete cascade,
   account_id        uuid not null references publisher_accounts (id) on delete cascade,
   project_name      text not null,              -- 6amMart-User-App, StackFood Store …
   app_name          text not null default '',   -- BOOKVEY, ZippyGo Store …
@@ -137,6 +165,7 @@ create index apps_account_idx on apps (account_id);
 create index apps_status_idx   on apps (status);
 create index apps_assigned_idx on apps (assigned_to);
 create index apps_keystore_idx on apps (keystore_id);
+create index apps_product_idx on apps (product_id);
 
 create table app_events (
   id          uuid primary key default gen_random_uuid(),
@@ -171,6 +200,41 @@ create trigger apps_touch               before update on apps
   for each row execute function touch_updated_at();
 create trigger keystores_touch          before update on keystores
   for each row execute function touch_updated_at();
+create trigger products_touch           before update on products
+  for each row execute function touch_updated_at();
+
+-- A submission always mirrors its product's identity …
+create or replace function apps_from_product() returns trigger as $$
+declare p products%rowtype;
+begin
+  select * into p from products where id = new.product_id;
+  if not found then
+    raise exception 'App % does not exist', new.product_id;
+  end if;
+  new.account_id   := p.account_id;
+  new.project_name := p.project_name;
+  new.app_name     := p.app_name;
+  new.keystore_id  := p.keystore_id;
+  new.store_url    := p.store_url;
+  return new;
+end $$ language plpgsql;
+
+create trigger apps_from_product before insert or update on apps
+  for each row execute function apps_from_product();
+
+-- … so editing a product updates every submission of it.
+create or replace function products_sync_apps() returns trigger as $$
+begin
+  update apps set product_id = new.id
+   where product_id = new.id
+     and (account_id, project_name, app_name, keystore_id, store_url)
+         is distinct from
+         (new.account_id, new.project_name, new.app_name, new.keystore_id, new.store_url);
+  return null;
+end $$ language plpgsql;
+
+create trigger products_sync_apps after update on products
+  for each row execute function products_sync_apps();
 
 -- Record status transitions so we can show how long something has sat.
 create or replace function log_app_status() returns trigger as $$
@@ -209,8 +273,10 @@ begin
     into pending, total
     from apps where release_id = target;
 
+  -- Keep the date it first went fully live; later edits must not move it.
   update releases
-     set released_on = case when total > 0 and pending = 0 then current_date else null end
+     set released_on = case when total > 0 and pending = 0
+                            then coalesce(released_on, current_date) else null end
    where id = target;
 
   return null;
@@ -259,11 +325,12 @@ alter table releases           enable row level security;
 alter table apps               enable row level security;
 alter table app_events         enable row level security;
 alter table keystores          enable row level security;
+alter table products           enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['clients','team_members','publisher_accounts','releases','apps','app_events','keystores'] loop
+  foreach t in array array['clients','team_members','publisher_accounts','releases','apps','app_events','keystores','products'] loop
     execute format(
       'create policy team_all on %I for all to authenticated using (true) with check (true)', t);
   end loop;
@@ -278,3 +345,75 @@ create policy jks_team_all on storage.objects
   for all to authenticated
   using (bucket_id = 'jks')
   with check (bucket_id = 'jks');
+
+-- ---------------------------------------------------- product lines ----
+-- What the team sells (6amMart, StackFood …), each with its projects and a
+-- logo. Edited under Settings → Product lines; the rows below are only the
+-- starting set.
+create table if not exists product_lines (
+  id         uuid primary key default gen_random_uuid(),
+  name       text not null unique,
+  logo_path  text,                      -- object in the public 'logos' bucket
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists product_line_projects (
+  id           uuid primary key default gen_random_uuid(),
+  line_id      uuid not null references product_lines (id) on delete cascade,
+  project_name text not null unique,     -- matches products.project_name
+  sort_order   integer not null default 0,
+  created_at   timestamptz not null default now()
+);
+
+create index if not exists product_line_projects_line_idx on product_line_projects (line_id);
+
+drop trigger if exists product_lines_touch on product_lines;
+create trigger product_lines_touch before update on product_lines
+  for each row execute function touch_updated_at();
+
+alter table product_lines         enable row level security;
+alter table product_line_projects enable row level security;
+drop policy if exists team_all on product_lines;
+create policy team_all on product_lines for all to authenticated using (true) with check (true);
+drop policy if exists team_all on product_line_projects;
+create policy team_all on product_line_projects for all to authenticated using (true) with check (true);
+
+-- ------------------------------------------------------------------ logos ---
+insert into storage.buckets (id, name, public)
+values ('logos', 'logos', true)
+on conflict (id) do nothing;
+
+drop policy if exists logos_team_write on storage.objects;
+create policy logos_team_write on storage.objects
+  for all to authenticated
+  using (bucket_id = 'logos')
+  with check (bucket_id = 'logos');
+
+-- --------------------------------------------------------- starting data ---
+insert into product_lines (name, sort_order) values
+  ('6amMart', 0),
+  ('StackFood', 1),
+  ('DriveMond', 2),
+  ('Demandium', 3)
+on conflict (name) do nothing;
+
+insert into product_line_projects (line_id, project_name, sort_order)
+select l.id, v.project_name, v.sort_order
+from (values
+  ('6amMart',   '6amMart-User-App',       0),
+  ('6amMart',   '6amMart-Store-App',      1),
+  ('6amMart',   '6amMart-Delivery-App',   2),
+  ('6amMart',   '6amMart-Serviceman-App', 3),
+  ('StackFood', 'StackFood User',         0),
+  ('StackFood', 'StackFood Store',        1),
+  ('StackFood', 'StackFood Delivery',     2),
+  ('DriveMond', 'DriveMond User',         0),
+  ('DriveMond', 'DriveMond Driver',       1),
+  ('Demandium', 'Demandium User',         0),
+  ('Demandium', 'Demandium Provider',     1),
+  ('Demandium', 'Demandium Serviceman',   2)
+) as v(line, project_name, sort_order)
+join product_lines l on l.name = v.line
+on conflict (project_name) do nothing;

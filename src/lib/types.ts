@@ -40,6 +40,36 @@ export type PublisherAccount = {
   updated_at: string;
 };
 
+/** A product the team sells (6amMart, StackFood …), with its projects and logo. */
+export type ProductLine = {
+  id: string;
+  name: string;
+  logo_path: string | null;
+  /** Public URL of the logo, resolved on the server. */
+  logo_url: string | null;
+  sort_order: number;
+  projects: string[];
+};
+
+/** What an app shows for its product line: the line's name and logo. */
+export type LineBadge = { line: string; logo: string | null };
+
+/** One of a client's permanent apps — set up once, submitted every release. */
+export type Product = {
+  id: string;
+  client_id: string;
+  account_id: string;
+  project_name: string;
+  app_name: string;
+  keystore_id: string | null;
+  store_url: string | null;
+  note: string | null;
+  sort_order: number;
+  archived: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 /** The signing keystore a client's apps share. */
 export type Keystore = {
   id: string;
@@ -53,7 +83,7 @@ export type Keystore = {
   updated_at: string;
 };
 
-/** One publication round for one client. */
+/** One versioned release for one client. */
 export type Release = {
   id: string;
   client_id: string;
@@ -67,9 +97,14 @@ export type Release = {
   updated_at: string;
 };
 
+/**
+ * One submission of a product in one release. The identity fields (project,
+ * app name, account, keystore, store link) mirror the product.
+ */
 export type App = {
   id: string;
   release_id: string;
+  product_id: string;
   account_id: string;
   project_name: string;
   app_name: string;
@@ -104,6 +139,7 @@ export type ReleaseWithApps = Release & { apps: App[] };
 export type ClientFull = Client & {
   publisher_accounts: PublisherAccount[];
   keystores: Keystore[];
+  products: Product[];
   releases: ReleaseWithApps[];
 };
 

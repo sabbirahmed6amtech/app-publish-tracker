@@ -1,13 +1,26 @@
 import { PageHeader } from "@/components/PageHeader";
-import { ClientDialog } from "@/components/dialogs/ClientDialog";
+import { NewClientWizard } from "@/components/dialogs/NewClientWizard";
 import { ClientsList, type ClientCard } from "@/components/ClientsList";
-import { getClients, getTeam, teamIndex } from "@/lib/queries";
+import {
+  getClients,
+  getProductLines,
+  getTeam,
+  projectSuggestions,
+  teamIndex,
+} from "@/lib/queries";
 import { PLATFORMS, releaseState } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
 export default async function ClientsPage() {
-  const [clients, roster] = await Promise.all([getClients(), getTeam()]);
+  const [clients, roster, lines] = await Promise.all([
+    getClients(),
+    getTeam(),
+    getProductLines(),
+  ]);
+  const wizard = (
+    <NewClientWizard lines={lines} suggestions={projectSuggestions(lines, clients)} />
+  );
   const names = teamIndex(roster);
 
   // Flattened to just what the card renders, so the client bundle stays small.
@@ -23,7 +36,7 @@ export default async function ClientsPage() {
         accountName: a.account_name,
       })),
       releaseCount: c.releases.length,
-      totalApps: c.releases.reduce((n, r) => n + r.apps.length, 0),
+      totalApps: c.products.filter((p) => !p.archived).length,
       latest: latest
         ? {
             id: latest.id,
@@ -41,15 +54,18 @@ export default async function ClientsPage() {
       <PageHeader
         title="Clients"
         meta={`${clients.length} active engagements`}
-        actions={<ClientDialog trigger="+ New client" />}
       />
 
       {clients.length === 0 ? (
         <div className="card px-6 py-16 text-center">
-          <p className="text-[14px] font-medium text-neutral-800">No clients yet.</p>
-          <p className="mt-1 text-[13px] text-neutral-500">
-            Add one, then create a release to record its first publication round.
+          <p className="text-[15px] font-semibold">No clients yet.</p>
+          <p className="mx-auto mt-1 max-w-md text-[13px] text-muted-foreground">
+            Set one up — client, stores, apps and keystore in one go — and its first release
+            starts right away.
           </p>
+          <div className="mt-5 flex justify-center">
+            {wizard}
+          </div>
         </div>
       ) : (
         <ClientsList clients={cards} />

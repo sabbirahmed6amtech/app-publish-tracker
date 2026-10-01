@@ -61,12 +61,9 @@ from (values
 join clients c on c.ticket = v.ticket
 on conflict (client_id, version) do nothing;
 
-insert into apps (release_id, account_id, project_name, app_name, status,
-                  build_version, flutter_version, jks, store_url, note, sort_order)
-select rel.id, pa.id, v.project_name, v.app_name, v.status::app_status,
-       nullif(v.build_version, ''), nullif(v.flutter_version, ''), nullif(v.jks, ''),
-       nullif(v.store_url, ''), nullif(v.note, ''), v.sort_order
-from (values
+drop table if exists seed_apps;
+create temp table seed_apps as
+select * from (values
   ('52999','play_store','6amMart-User-App',      'BOOKVEY',                    'in_review',      '1.0.0+4','','','','',0),
   ('52999','play_store','6amMart-Store-App',     'BOOKVEY DELIVERY PARTNERS',  'in_review',      '1.0.0+4','','','','',1),
   ('52999','play_store','6amMart-Delivery-App',  'BOOKVEY STORES',             'in_review',      '1.0.0+4','','','','',2),
@@ -107,11 +104,27 @@ from (values
   ('53459','app_store', '6amMart-Serviceman-App','Martconnection ServiceMan',  'ongoing',        '','','','','',2),
   ('53459','app_store', '6amMart-Store-App',     'Martconnection Store',       'ongoing',        '','','','','',3)
 ) as v(ticket, platform, project_name, app_name, status, build_version,
-       flutter_version, jks, store_url, note, sort_order)
+       flutter_version, jks, store_url, note, sort_order);
+
+-- The client's permanent apps …
+insert into products (client_id, account_id, project_name, app_name, store_url, sort_order)
+select c.id, pa.id, v.project_name, v.app_name, nullif(v.store_url, ''), v.sort_order
+from seed_apps v
 join clients c             on c.ticket = v.ticket
 join publisher_accounts pa on pa.client_id = c.id and pa.platform = v.platform::platform
+on conflict (account_id, project_name) do nothing;
+
+-- … and their submissions in the sheet's release.
+insert into apps (release_id, product_id, status, build_version, flutter_version, jks, note,
+                  sort_order)
+select rel.id, p.id, v.status::app_status,
+       nullif(v.build_version, ''), nullif(v.flutter_version, ''), nullif(v.jks, ''),
+       nullif(v.note, ''), v.sort_order
+from seed_apps v
+join clients c             on c.ticket = v.ticket
+join publisher_accounts pa on pa.client_id = c.id and pa.platform = v.platform::platform
+join products p            on p.account_id = pa.id and p.project_name = v.project_name
 join releases rel          on rel.client_id = c.id
 where not exists (
-  select 1 from apps a
-  where a.release_id = rel.id and a.account_id = pa.id and a.project_name = v.project_name
+  select 1 from apps a where a.release_id = rel.id and a.product_id = p.id
 );

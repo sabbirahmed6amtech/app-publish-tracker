@@ -44,7 +44,7 @@ export function ReleaseDialog({
       const res = await saveRelease(fd);
       if (!res.ok) return setError(res.error);
 
-      // A new round usually ships the same apps as the last one.
+      // A new release usually ships the same apps as the last one.
       if (!release && copyFrom && res.id) {
         const copied = await copyAppsFromRelease(copyFrom, res.id);
         if (!copied.ok) return setError(copied.error);
@@ -66,7 +66,7 @@ export function ReleaseDialog({
         open={open}
         onClose={() => setOpen(false)}
         title={release ? `Edit version ${release.version}` : "New release"}
-        subtitle="One publication round for this client."
+        subtitle="One versioned release for this client."
         width="max-w-lg"
       >
         <form action={submit}>
@@ -184,7 +184,7 @@ export function ReleaseDialog({
                 name="note"
                 rows={2}
                 defaultValue={release?.note ?? ""}
-                placeholder="What changed in this round."
+                placeholder="What changed in this release."
                 className="field resize-none"
               />
             </div>

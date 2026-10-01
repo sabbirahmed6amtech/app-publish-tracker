@@ -6,6 +6,7 @@ import { Modal } from "@/components/Modal";
 import { Spinner } from "@/components/Spinner";
 import { CodeEditor } from "@/components/CodeEditor";
 import { KeystoreDownloadButton } from "@/components/KeystoreDownloadButton";
+import { KeyPropertiesButton } from "@/components/KeyPropertiesButton";
 import { saveKeystore } from "@/lib/actions";
 import type { Keystore } from "@/lib/types";
 
@@ -25,11 +26,14 @@ export function KeystoreDialog({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [removeFile, setRemoveFile] = useState(false);
+  // Loading a key.properties file swaps the editor's contents.
+  const [loaded, setLoaded] = useState<{ text: string; n: number } | null>(null);
   const hasFile = Boolean(keystore?.file_path) && !removeFile;
 
   function openDialog() {
     setError(null);
     setRemoveFile(false);
+    setLoaded(null);
     setOpen(true);
   }
 
@@ -112,13 +116,19 @@ export function KeystoreDialog({
             </div>
 
             <div>
-              <label className="label" htmlFor="keystore-details">
-                JKS details
-              </label>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="label mb-0" htmlFor="keystore-details">
+                  JKS details
+                </label>
+                <KeyPropertiesButton
+                  onLoad={(text) => setLoaded((l) => ({ text, n: (l?.n ?? 0) + 1 }))}
+                />
+              </div>
               <CodeEditor
+                key={loaded?.n ?? 0}
                 id="keystore-details"
                 name="details"
-                defaultValue={keystore?.details ?? ""}
+                defaultValue={loaded?.text ?? keystore?.details ?? ""}
                 placeholder={"storePassword=\nkeyPassword=\nkeyAlias=\nstoreFile="}
                 rows={5}
               />

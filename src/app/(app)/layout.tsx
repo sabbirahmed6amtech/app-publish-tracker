@@ -1,6 +1,16 @@
 import { Sidebar, type SidebarClient } from "@/components/Sidebar";
+import { TopBar, type SearchItem } from "@/components/TopBar";
+import { NewClientWizard } from "@/components/dialogs/NewClientWizard";
+import { PageContainer } from "@/components/PageContainer";
 import { createClient } from "@/lib/supabase/server";
-import { getClients, getTeam, teamIndex } from "@/lib/queries";
+import {
+  getClients,
+  getProductLines,
+  getTeam,
+  projectSuggestions,
+  teamIndex,
+} from "@/lib/queries";
+import type { ProductLine } from "@/lib/types";
 import { releaseState } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
@@ -9,16 +19,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const supabase = await createClient();
 
   let clients: SidebarClient[] = [];
+  let search: SearchItem[] = [];
+  let lines: ProductLine[] = [];
+  let suggestions: string[] = [];
   let loadError: string | null = null;
   let user: { email?: string } | null = null;
 
   try {
     // Session, roster and client tree are independent — fetch them together.
-    const [auth, roster, tree] = await Promise.all([
+    const [auth, roster, tree, productLines] = await Promise.all([
       supabase.auth.getUser(),
       getTeam(),
       getClients(),
+      getProductLines(),
     ]);
+    lines = productLines;
+    suggestions = projectSuggestions(productLines, tree);
     user = auth.data.user;
     const names = teamIndex(roster);
     clients = tree.map((c) => ({
@@ -36,6 +52,29 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         state: releaseState(r.apps),
       })),
     }));
+    search = tree.flatMap((c) => [
+      {
+        id: c.id,
+        kind: "client" as const,
+        label: c.name,
+        sub: `#${c.ticket}`,
+        href: `/clients/${c.id}`,
+      },
+      ...c.releases.map((r) => ({
+        id: r.id,
+        kind: "release" as const,
+        label: `${c.name} · v${r.version}`,
+        sub: `${r.apps.length} apps`,
+        href: `/releases/${r.id}`,
+      })),
+      ...c.products.map((p) => ({
+        id: p.id,
+        kind: "app" as const,
+        label: p.app_name || p.project_name,
+        sub: `${c.name} · ${p.project_name}${p.archived ? " · archived" : ""}`,
+        href: `/clients/${c.id}?tab=apps`,
+      })),
+    ]);
   } catch (e) {
     loadError = e instanceof Error ? e.message : String(e);
   }
@@ -44,7 +83,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="flex min-h-screen flex-col lg:flex-row">
       <Sidebar clients={clients} email={user?.email ?? null} />
       <main className="min-w-0 flex-1">
-        <div className="mx-auto max-w-[1400px] px-5 py-6 lg:px-8 lg:py-8">
+        <TopBar
+          items={search}
+          actions={<NewClientWizard lines={lines} suggestions={suggestions} />}
+        />
+        <PageContainer>
           {loadError && (
             <div className="card mb-5 border-rose-200 bg-rose-50 p-4 text-[13px] text-rose-800">
               <strong className="font-semibold">Could not load data.</strong> {loadError}
@@ -56,7 +99,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </div>
           )}
           {children}
-        </div>
+        </PageContainer>
       </main>
     </div>
   );

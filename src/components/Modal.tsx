@@ -1,7 +1,26 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
+// Literal classes, so Tailwind can see them.
+const WIDTHS: Record<string, string> = {
+  "max-w-md": "sm:max-w-md",
+  "max-w-lg": "sm:max-w-lg",
+  "max-w-xl": "sm:max-w-xl",
+  "max-w-2xl": "sm:max-w-2xl",
+};
+
+/**
+ * The app's form dialog: a titled shadcn Dialog whose body and footer are
+ * laid out by the caller. `width` is a Tailwind max-width class.
+ */
 export function Modal({
   open,
   onClose,
@@ -17,48 +36,22 @@ export function Modal({
   children: ReactNode;
   width?: string;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   return (
-    <div data-modal className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8">
-      <div
-        className="fixed inset-0 bg-neutral-900/25 backdrop-blur-[1px]"
-        onClick={onClose}
-        aria-hidden
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className={`card relative z-10 w-full ${width} my-auto`}
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent
+        data-modal
+        className={`max-h-[calc(100dvh-2rem)] gap-0 overflow-y-auto p-0 ${WIDTHS[width] ?? WIDTHS["max-w-xl"]}`}
       >
-        <div className="flex items-start justify-between border-b border-neutral-200 px-5 py-3.5">
-          <div>
-            <h2 className="text-[15px] font-semibold text-neutral-900">{title}</h2>
-            {subtitle && <p className="mt-0.5 text-[12px] text-neutral-500">{subtitle}</p>}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn btn-ghost -mr-1.5 -mt-1 px-2 py-1 text-base leading-none"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
+        <DialogHeader className="border-b px-5 py-4 pr-12">
+          <DialogTitle className="text-[15px]">{title}</DialogTitle>
+          {subtitle ? (
+            <DialogDescription className="text-[12px]">{subtitle}</DialogDescription>
+          ) : (
+            <DialogDescription className="sr-only">{title}</DialogDescription>
+          )}
+        </DialogHeader>
         {children}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -96,7 +96,7 @@ export function PipelineCard({
           return (
             <Link
               key={status}
-              href={`/apps?status=${status}`}
+              href={`/reports?tab=sheet&status=${status}`}
               className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1
                           text-[12px] font-medium ring-1 ring-inset transition-opacity
                           hover:opacity-80 ${meta.chip} ${s.count === 0 ? "opacity-40" : ""}`}
@@ -125,7 +125,7 @@ function StageCard({ stage, total }: { stage: PipelineStage; total: number }) {
 
   return (
     <Link
-      href={`/apps?status=${stage.status}`}
+      href={`/reports?tab=sheet&status=${stage.status}`}
       className={`group relative min-w-0 flex-1 overflow-hidden rounded-lg border
                   border-neutral-200 bg-white px-3 pb-2.5 pt-2.5 transition-all
                   hover:border-neutral-300 hover:shadow-[0_1px_3px_rgba(16,24,40,0.08)]

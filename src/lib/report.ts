@@ -1,4 +1,4 @@
-import { PROJECT_SUGGESTIONS, STATUSES } from "./constants";
+import { STATUSES } from "./constants";
 import type { AppRow, AppStatus, Platform } from "./types";
 
 /**
@@ -17,24 +17,21 @@ import type { AppRow, AppStatus, Platform } from "./types";
  * lead sees a URL exactly when there is something to open.
  */
 
-/** First word of each known product, e.g. 6ammart / stackfood / drivemond. */
-const PRODUCT_PREFIXES = new Set(
-  PROJECT_SUGGESTIONS.map((p) => p.split(/[\s-]/)[0].toLowerCase()),
-);
-
 /**
- * "6amMart-User-App" -> "User", "StackFood Delivery" -> "Delivery".
- * Anything that is not a recognised product keeps its full name, so a
- * one-off like "Playground booking app" is not mangled.
+ * "6amMart-User-App" -> "User", "StackFood Delivery" -> "Delivery", given the
+ * product line names (6amMart, StackFood …) from Settings. Anything that is not
+ * from a known line keeps its full name, so a one-off like "Playground booking
+ * app" is not mangled.
  */
-export function appRole(projectName: string): string {
+export function appRole(projectName: string, lineNames: string[]): string {
   const name = projectName.trim();
+  const prefixes = new Set(lineNames.map((l) => l.toLowerCase()));
 
   const dashed = name.match(/^(.+?)-(.+)-App$/i);
-  if (dashed && PRODUCT_PREFIXES.has(dashed[1].toLowerCase())) return dashed[2];
+  if (dashed && prefixes.has(dashed[1].toLowerCase())) return dashed[2];
 
   const parts = name.split(/\s+/);
-  if (parts.length >= 2 && PRODUCT_PREFIXES.has(parts[0].toLowerCase())) {
+  if (parts.length >= 2 && prefixes.has(parts[0].toLowerCase())) {
     return parts.slice(1).join(" ");
   }
   return name;
@@ -71,7 +68,7 @@ function platformMark(apps: ReportApp[]): string {
   return "⏳";
 }
 
-export function buildReport(inputs: ReportInput[]): string {
+export function buildReport(inputs: ReportInput[], lineNames: string[] = []): string {
   return inputs
     .map((input) => {
       const lines: string[] = [`### ${input.ticket} - ${input.clientName}`];
@@ -106,7 +103,7 @@ export function buildReport(inputs: ReportInput[]): string {
 
           // Parenthesised: notes often contain a dash of their own.
           const suffix = app.status !== "production" && app.note ? ` (${app.note})` : "";
-          block.push(`${appRole(app.projectName)}: ${value}${suffix}`);
+          block.push(`${appRole(app.projectName, lineNames)}: ${value}${suffix}`);
         }
         blocks.push(block.join("\n"));
       }
@@ -119,7 +116,7 @@ export function buildReport(inputs: ReportInput[]): string {
 }
 
 /** Group flattened rows by release, newest client order preserved. */
-export function reportFromRows(rows: AppRow[]): string {
+export function reportFromRows(rows: AppRow[], lineNames: string[] = []): string {
   const groups = new Map<string, ReportInput>();
 
   for (const r of rows) {
@@ -145,5 +142,5 @@ export function reportFromRows(rows: AppRow[]): string {
     });
   }
 
-  return buildReport([...groups.values()]);
+  return buildReport([...groups.values()], lineNames);
 }

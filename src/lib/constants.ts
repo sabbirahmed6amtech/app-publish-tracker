@@ -102,22 +102,6 @@ export const ACCOUNT_TYPES: Record<AccountType, { label: string }> = {
   personal: { label: "Personal" },
 };
 
-/** Product lines the team ships, used to suggest project names. */
-export const PROJECT_SUGGESTIONS = [
-  "6amMart-User-App",
-  "6amMart-Store-App",
-  "6amMart-Delivery-App",
-  "6amMart-Serviceman-App",
-  "StackFood User",
-  "StackFood Store",
-  "StackFood Delivery",
-  "DriveMond User",
-  "DriveMond Driver",
-  "Demandium User",
-  "Demandium Provider",
-  "Demandium Serviceman",
-];
-
 /** How many days in a non-terminal status before we flag it as stale. */
 export const STALE_AFTER_DAYS = 7;
 
@@ -188,6 +172,24 @@ export function suggestNextVersion(existing: string[]): string {
     .sort((a, b) => b[0] - a[0] || b[1] - a[1] || b[2] - a[2])[0];
 
   return `${latest[0]}.${latest[1] + 1}.0`;
+}
+
+/**
+ * The next build number for a new release: the last version part and the
+ * build after "+" both go up by one — 1.0.6+9 -> 1.0.7+10, 2.1 -> 2.2.
+ * Anything that doesn't end in a number gives null, to be filled in by hand.
+ */
+export function bumpBuild(build: string | null | undefined): string | null {
+  const [version, code, ...rest] = (build ?? "").trim().split("+");
+  if (!version || rest.length) return null;
+
+  const bumped = version.match(/^(.*?)(\d+)$/);
+  if (!bumped) return null;
+  const nextVersion = `${bumped[1]}${Number(bumped[2]) + 1}`;
+
+  if (code === undefined) return nextVersion;
+  if (!/^\d+$/.test(code)) return null;
+  return `${nextVersion}+${Number(code) + 1}`;
 }
 
 export function formatDate(iso: string | null): string {

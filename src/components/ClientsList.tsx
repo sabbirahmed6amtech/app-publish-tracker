@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { SearchIcon } from "lucide-react";
 import { RELEASE_STATES, formatDate } from "@/lib/constants";
-import type { ReleaseState } from "@/lib/types";
+import { StoreIcon } from "@/components/StoreIcon";
+import type { Platform, ReleaseState } from "@/lib/types";
 
 export type ClientCard = {
   id: string;
   ticket: string;
   name: string;
-  accounts: { platform: string; label: string; accountName: string }[];
+  accounts: { platform: Platform; label: string; accountName: string }[];
   releaseCount: number;
   totalApps: number;
   latest: {
@@ -44,10 +46,7 @@ export function ClientsList({ clients }: { clients: ClientCard[] }) {
   return (
     <>
       <div className="card mb-3 flex items-center gap-2 px-3 py-2">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" className="shrink-0 text-neutral-400" aria-hidden>
-          <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
-          <path d="m16.5 16.5 4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
+        <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -77,8 +76,8 @@ export function ClientsList({ clients }: { clients: ClientCard[] }) {
           {filtered.map((c) => (
             <Link
               key={c.id}
-              href={c.latest ? `/releases/${c.latest.id}` : `/clients/${c.id}`}
-              className="card block px-4 py-3.5 transition-colors hover:border-neutral-300 hover:bg-neutral-50/60"
+              href={`/clients/${c.id}`}
+              className="card block px-4 py-3.5 transition-colors hover:border-ring/60"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -94,9 +93,7 @@ export function ClientsList({ clients }: { clients: ClientCard[] }) {
                     ) : (
                       c.accounts.map((a) => (
                         <span key={a.platform} className="inline-flex items-center gap-1.5">
-                          <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-600">
-                            {a.label}
-                          </span>
+                          <StoreIcon platform={a.platform} size={13} />
                           <span className="truncate">{a.accountName || "—"}</span>
                         </span>
                       ))
@@ -106,8 +103,8 @@ export function ClientsList({ clients }: { clients: ClientCard[] }) {
 
                 <div className="flex shrink-0 items-center gap-5 text-[12px] text-neutral-500">
                   <span>
-                    {c.releaseCount} {c.releaseCount === 1 ? "release" : "releases"} ·{" "}
-                    {c.totalApps} apps
+                    {c.totalApps} {c.totalApps === 1 ? "app" : "apps"} · {c.releaseCount}{" "}
+                    {c.releaseCount === 1 ? "release" : "releases"}
                   </span>
                   {c.latest ? (
                     <span className="text-right">
