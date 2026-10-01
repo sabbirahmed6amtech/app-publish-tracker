@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export const metadata: Metadata = {
   title: "Status tracker · Publish Tracker",
@@ -23,6 +24,7 @@ export default function TrackLayout({ children }: { children: React.ReactNode })
               <span className="block text-[11px] text-muted-foreground">App status</span>
             </span>
           </Link>
+          <ThemeToggle className="ml-auto" />
         </div>
       </header>
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">{children}</main>

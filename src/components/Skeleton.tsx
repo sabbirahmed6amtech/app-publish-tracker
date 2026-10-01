@@ -31,7 +31,7 @@ export function PageHeaderSkeleton({ tags = false }: { tags?: boolean }) {
 
 export function StatStripSkeleton() {
   return (
-    <div className="card mb-4 grid grid-cols-2 divide-neutral-200 sm:grid-cols-4 sm:divide-x">
+    <div className="card mb-4 grid grid-cols-2 divide-border sm:grid-cols-4 sm:divide-x">
       {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="space-y-2 px-4 py-3.5">
           <Line w="76px" h={10} />
@@ -54,13 +54,13 @@ export function TableSkeleton({
   return (
     <section className="card overflow-hidden">
       {title && (
-        <div className="space-y-2 border-b border-neutral-200 bg-neutral-50/60 px-4 py-3">
+        <div className="space-y-2 border-b border-border bg-muted/40 px-4 py-3">
           <Line w="180px" h={14} />
           <Line w="280px" h={11} />
         </div>
       )}
       <div className="px-4">
-        <div className="flex gap-4 border-b border-neutral-200 py-2.5">
+        <div className="flex gap-4 border-b border-border py-2.5">
           {Array.from({ length: cols }).map((_, i) => (
             <div key={i} className="flex-1">
               <Line w="60%" h={10} />
@@ -70,7 +70,7 @@ export function TableSkeleton({
         {Array.from({ length: rows }).map((_, r) => (
           <div
             key={r}
-            className="flex items-center gap-4 border-b border-neutral-100 py-3 last:border-0"
+            className="flex items-center gap-4 border-b border-border/60 py-3 last:border-0"
           >
             {Array.from({ length: cols }).map((_, c) => (
               <div key={c} className="flex-1">
@@ -87,14 +87,14 @@ export function TableSkeleton({
 export function ListCardSkeleton({ rows = 5 }: { rows?: number }) {
   return (
     <section className="card overflow-hidden">
-      <div className="space-y-2 border-b border-neutral-200 px-4 py-2.5">
+      <div className="space-y-2 border-b border-border px-4 py-2.5">
         <Line w="140px" h={13} />
         <Line w="220px" h={11} />
       </div>
       {Array.from({ length: rows }).map((_, i) => (
         <div
           key={i}
-          className="flex items-center gap-3 border-b border-neutral-100 px-4 py-3 last:border-0"
+          className="flex items-center gap-3 border-b border-border/60 px-4 py-3 last:border-0"
         >
           <span className="skeleton size-2 shrink-0 rounded-full" />
           <div className="flex-1 space-y-1.5">

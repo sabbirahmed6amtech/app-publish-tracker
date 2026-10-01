@@ -16,6 +16,7 @@ import {
 import { PLATFORMS, RELEASE_STATES } from "@/lib/constants";
 import { signOut } from "@/lib/actions";
 import { NewReleaseButton } from "@/components/NewReleaseButton";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { StoreIcon } from "@/components/StoreIcon";
 import type { Platform, ReleaseState } from "@/lib/types";
 
@@ -131,6 +132,11 @@ export function Sidebar({
           ) : (
             <div className="flex-1" />
           )}
+
+          <div className="flex items-center justify-between border-t px-3 py-2">
+            <span className="text-[11px] font-medium text-muted-foreground">Theme</span>
+            <ThemeToggle />
+          </div>
 
           {email && (
             <div className="flex items-center gap-2.5 border-t px-3 py-2.5">

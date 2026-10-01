@@ -83,7 +83,7 @@ export function KeystoreDialog({
                   JKS file
                 </label>
                 {hasFile ? (
-                  <div className="flex items-center gap-1.5 rounded-md border border-neutral-300 px-2.5 py-1 text-[13px]">
+                  <div className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[13px]">
                     <span
                       className="min-w-0 flex-1 truncate font-mono"
                       title={keystore?.file_name ?? ""}
@@ -96,7 +96,7 @@ export function KeystoreDialog({
                     />
                     <button
                       type="button"
-                      className="btn btn-ghost px-1.5 py-0.5 text-[12px] text-rose-600"
+                      className="btn btn-ghost px-1.5 py-0.5 text-[12px] text-bad"
                       onClick={() => setRemoveFile(true)}
                     >
                       Remove
@@ -108,7 +108,7 @@ export function KeystoreDialog({
                     name="file"
                     type="file"
                     accept=".jks,.keystore,.p12"
-                    className="field py-1 text-[12px] file:mr-2 file:rounded file:border-0 file:bg-neutral-100 file:px-2 file:py-0.5 file:text-[12px]"
+                    className="field py-1 text-[12px] file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-0.5 file:text-[12px]"
                   />
                 )}
                 {removeFile && <input type="hidden" name="file_remove" value="1" />}
@@ -149,13 +149,13 @@ export function KeystoreDialog({
             </div>
 
             {error && (
-              <p className="rounded-md bg-rose-50 px-2.5 py-2 text-[12px] text-rose-700">
+              <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[12px] text-bad">
                 {error}
               </p>
             )}
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-neutral-200 px-5 py-3">
+          <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
             <button type="button" className="btn btn-secondary" onClick={() => setOpen(false)}>
               Cancel
             </button>

@@ -35,12 +35,12 @@ function LoginForm() {
   return (
     <form onSubmit={onSubmit} className="card w-full max-w-sm p-6">
       <div className="mb-5 flex items-center gap-2.5">
-        <span className="grid size-7 place-items-center rounded-md bg-neutral-900 text-[13px] font-bold text-white">
+        <span className="grid size-7 place-items-center rounded-md bg-primary text-[13px] font-bold text-primary-foreground">
           P
         </span>
         <div className="leading-tight">
           <div className="text-[15px] font-semibold">Publish Tracker</div>
-          <div className="text-[11px] text-neutral-500">Store submissions</div>
+          <div className="text-[11px] text-muted-foreground">Store submissions</div>
         </div>
       </div>
 
@@ -71,7 +71,7 @@ function LoginForm() {
       />
 
       {error && (
-        <p className="mt-3 rounded-md bg-rose-50 px-2.5 py-2 text-[12px] text-rose-700">
+        <p className="mt-3 rounded-md bg-bad-soft px-2.5 py-2 text-[12px] text-bad">
           {error}
         </p>
       )}
@@ -86,7 +86,7 @@ function LoginForm() {
         )}
       </button>
 
-      <p className="mt-4 text-[11px] leading-relaxed text-neutral-400">
+      <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground/80">
         Accounts are created by an admin in the Supabase dashboard under
         Authentication → Users.
       </p>

@@ -137,17 +137,17 @@ export function ReleaseDialog({
             </div>
 
             {release && appCount > 0 && (
-              <label className="flex cursor-pointer select-none items-start gap-2 rounded-md bg-neutral-50 px-3 py-2 text-[13px] text-neutral-700">
+              <label className="flex cursor-pointer select-none items-start gap-2 rounded-md bg-muted/50 px-3 py-2 text-[13px] text-foreground/85">
                 <input
                   type="checkbox"
                   name="cascade_assignee"
                   defaultChecked
-                  className="mt-0.5 size-3.5 accent-neutral-900"
+                  className="mt-0.5 size-3.5 accent-foreground"
                 />
                 <span>
                   Also assign the {appCount} {appCount === 1 ? "app" : "apps"} in this
                   release
-                  <span className="mt-0.5 block text-[11px] text-neutral-500">
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
                     Uncheck to keep per-app assignments as they are.
                   </span>
                 </span>
@@ -169,7 +169,7 @@ export function ReleaseDialog({
                       </option>
                     ))}
                 </select>
-                <p className="mt-1 text-[11px] text-neutral-500">
+                <p className="mt-1 text-[11px] text-muted-foreground">
                   Copies the app list and store accounts across, each one reset to Ongoing.
                 </p>
               </div>
@@ -190,13 +190,13 @@ export function ReleaseDialog({
             </div>
 
             {error && (
-              <p className="rounded-md bg-rose-50 px-2.5 py-2 text-[12px] text-rose-700">
+              <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[12px] text-bad">
                 {error}
               </p>
             )}
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-neutral-200 px-5 py-3">
+          <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
             <button type="button" className="btn btn-secondary" onClick={() => setOpen(false)}>
               Cancel
             </button>

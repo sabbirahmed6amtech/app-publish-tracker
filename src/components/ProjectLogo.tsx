@@ -30,7 +30,8 @@ export function ProjectLogo({
         src={badge.logo}
         alt={badge.line}
         title={badge.line}
-        className={`${SIZES[size]} shrink-0 border bg-white object-contain p-0.5`}
+        // A white tile keeps any logo legible; dimmed a touch so it doesn't glare in dark mode.
+        className={`${SIZES[size]} shrink-0 border bg-white object-contain p-0.5 dark:brightness-[0.85]`}
       />
     );
   }

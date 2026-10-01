@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { FlowDay } from "@/lib/flow";
 
 const OPENED = "#2a78d6";
-const CLOSED = "#0ca30c";
+const CLOSED = "var(--st-production)";
 const PAD = { top: 14, right: 12, bottom: 26, left: 28 };
 
 /**
@@ -82,21 +82,21 @@ export function DailyFlowCard({ days }: { days: FlowDay[] }) {
 
   return (
     <section className="card flex h-full flex-col overflow-hidden">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-neutral-200 px-4 py-2.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border px-4 py-2.5">
         <div>
-          <h2 className="text-[13px] font-semibold text-neutral-900">Daily opened vs closed</h2>
-          <p className="text-[11px] text-neutral-500">
+          <h2 className="text-[13px] font-semibold text-foreground">Daily opened vs closed</h2>
+          <p className="text-[11px] text-muted-foreground">
             Apps added against apps reaching Production, last {days.length} days.
           </p>
         </div>
         <div className="flex items-center gap-3 text-[12px]">
-          <span className="inline-flex items-center gap-1.5 text-neutral-600">
+          <span className="inline-flex items-center gap-1.5 text-foreground/70">
             <span className="h-0.5 w-3.5 rounded-full" style={{ background: OPENED }} />
-            Opened <span className="font-semibold text-neutral-900">{totals.opened}</span>
+            Opened <span className="font-semibold text-foreground">{totals.opened}</span>
           </span>
-          <span className="inline-flex items-center gap-1.5 text-neutral-600">
+          <span className="inline-flex items-center gap-1.5 text-foreground/70">
             <span className="h-0.5 w-3.5 rounded-full" style={{ background: CLOSED }} />
-            Closed <span className="font-semibold text-neutral-900">{totals.closed}</span>
+            Closed <span className="font-semibold text-foreground">{totals.closed}</span>
           </span>
         </div>
       </div>
@@ -116,10 +116,10 @@ export function DailyFlowCard({ days }: { days: FlowDay[] }) {
             <g key={t}>
               <line
                 x1={PAD.left} x2={size.w - PAD.right} y1={y(t)} y2={y(t)}
-                stroke="#e1e0d9" strokeWidth="1"
+                stroke="var(--border)" strokeWidth="1"
               />
               <text x={PAD.left - 6} y={y(t) + 3} textAnchor="end"
-                fill="#898781" style={{ fontSize: 9 }}>
+                fill="var(--muted-foreground)" style={{ fontSize: 9 }}>
                 {t}
               </text>
             </g>
@@ -134,7 +134,7 @@ export function DailyFlowCard({ days }: { days: FlowDay[] }) {
             <>
               <line
                 x1={x(hover)} x2={x(hover)} y1={PAD.top} y2={size.h - PAD.bottom}
-                stroke="#c3c2b7" strokeWidth="1"
+                stroke="color-mix(in oklch, var(--muted-foreground) 55%, transparent)" strokeWidth="1"
               />
               {(["opened", "closed"] as const).map((k) => (
                 <circle
@@ -152,11 +152,11 @@ export function DailyFlowCard({ days }: { days: FlowDay[] }) {
 
           {days.length > 0 && (
             <>
-              <text x={PAD.left} y={size.h - 8} fill="#898781" style={{ fontSize: 9 }}>
+              <text x={PAD.left} y={size.h - 8} fill="var(--muted-foreground)" style={{ fontSize: 9 }}>
                 {label(days[0].date)}
               </text>
               <text x={size.w - PAD.right} y={size.h - 8} textAnchor="end"
-                fill="#898781" style={{ fontSize: 9 }}>
+                fill="var(--muted-foreground)" style={{ fontSize: 9 }}>
                 {label(days[days.length - 1].date)}
               </text>
             </>
@@ -164,26 +164,26 @@ export function DailyFlowCard({ days }: { days: FlowDay[] }) {
         </svg>
       </div>
 
-      <div className="h-5 shrink-0 px-4 text-center text-[11px] text-neutral-500">
+      <div className="h-5 shrink-0 px-4 text-center text-[11px] text-muted-foreground">
         {active ? (
           <>
-            <span className="font-medium text-neutral-900">{label(active.date)}</span>
-            <span className="mx-2 text-neutral-300">·</span>
+            <span className="font-medium text-foreground">{label(active.date)}</span>
+            <span className="mx-2 text-muted-foreground/50">·</span>
             <span style={{ color: OPENED }}>{active.opened} opened</span>
-            <span className="mx-2 text-neutral-300">·</span>
+            <span className="mx-2 text-muted-foreground/50">·</span>
             <span style={{ color: CLOSED }}>{active.closed} closed</span>
           </>
         ) : (
-          <span className="text-neutral-400">Hover the chart for a day&rsquo;s numbers</span>
+          <span className="text-muted-foreground/80">Hover the chart for a day&rsquo;s numbers</span>
         )}
       </div>
 
-      <div className="grid shrink-0 grid-cols-3 divide-x divide-neutral-200 border-t border-neutral-200">
+      <div className="grid shrink-0 grid-cols-3 divide-x divide-border border-t border-border">
         <Stat
           label="Net change"
           value={`${net > 0 ? "+" : ""}${net}`}
           hint={net > 0 ? "backlog grew" : net < 0 ? "backlog shrank" : "held level"}
-          tone={net > 0 ? "#d03b3b" : net < 0 ? "#0ca30c" : undefined}
+          tone={net > 0 ? "var(--st-rejected)" : net < 0 ? "var(--st-production)" : undefined}
         />
         <Stat
           label="Busiest close"
@@ -209,13 +209,13 @@ function Stat({
 }) {
   return (
     <div className="px-4 py-3">
-      <div className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
-      <div className="mt-0.5 text-[18px] font-semibold leading-none" style={{ color: tone ?? "#0b0b0b" }}>
+      <div className="mt-0.5 text-[18px] font-semibold leading-none" style={{ color: tone ?? "var(--foreground)" }}>
         {value}
       </div>
-      <div className="mt-1 truncate text-[11px] text-neutral-400">{hint}</div>
+      <div className="mt-1 truncate text-[11px] text-muted-foreground/80">{hint}</div>
     </div>
   );
 }

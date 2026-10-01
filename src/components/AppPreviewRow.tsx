@@ -108,7 +108,7 @@ export function AppPreviewSheet({
               href={app.store_url}
               target="_blank"
               rel="noreferrer"
-              className="break-all text-blue-600 hover:underline"
+              className="break-all text-info hover:underline"
             >
               {app.store_url}
             </a>
@@ -129,7 +129,7 @@ export function AppPreviewSheet({
           )}
         </Field>
         <div className="py-2.5">
-          <dt className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+          <dt className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             JKS details
           </dt>
           <dd>
@@ -142,7 +142,7 @@ export function AppPreviewSheet({
                 readOnly
               />
             ) : (
-              <span className="text-[13px] text-neutral-300">—</span>
+              <span className="text-[13px] text-muted-foreground/50">—</span>
             )}
           </dd>
         </div>
@@ -170,16 +170,16 @@ function Field({
 }) {
   return (
     <div className="grid grid-cols-[120px_1fr] items-start gap-3 py-2.5">
-      <dt className="pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+      <dt className="pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </dt>
       <dd
-        className={`flex min-w-0 items-start gap-1 text-[13px] text-neutral-800 ${
+        className={`flex min-w-0 items-start gap-1 text-[13px] text-foreground ${
           mono ? "font-mono text-[12px]" : ""
         }`}
       >
         <div className="min-w-0 flex-1">
-          {children ?? <span className="font-sans text-neutral-300">—</span>}
+          {children ?? <span className="font-sans text-muted-foreground/50">—</span>}
         </div>
         {copy && <CopyButton value={copy} label={`Copy ${label.toLowerCase()}`} />}
       </dd>

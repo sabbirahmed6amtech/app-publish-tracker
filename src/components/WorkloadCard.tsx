@@ -13,9 +13,9 @@ import type { AppRow } from "@/lib/types";
  */
 
 const ZONES = [
-  { upTo: 33, label: "Comfortable", hex: "#0ca30c" },
-  { upTo: 66, label: "Busy", hex: "#fab219" },
-  { upTo: 100, label: "Under pressure", hex: "#d03b3b" },
+  { upTo: 33, label: "Comfortable", hex: "var(--st-production)" },
+  { upTo: 66, label: "Busy", hex: "var(--st-in-review)" },
+  { upTo: 100, label: "Under pressure", hex: "var(--st-rejected)" },
 ];
 
 function zoneFor(pct: number) {
@@ -62,16 +62,20 @@ export function WorkloadCard({
 
   return (
     <section className="card overflow-hidden">
-      <div className="flex items-baseline justify-between border-b border-neutral-200 px-4 py-2.5">
+      <div className="flex items-baseline justify-between border-b border-border px-4 py-2.5">
         <div>
-          <h2 className="text-[13px] font-semibold text-neutral-900">Workload pressure</h2>
-          <p className="text-[11px] text-neutral-500">
+          <h2 className="text-[13px] font-semibold text-foreground">Workload pressure</h2>
+          <p className="text-[11px] text-muted-foreground">
             Share of work not yet complete.
           </p>
         </div>
         <span
           className="rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset"
-          style={{ color: zone.hex, borderColor: zone.hex, backgroundColor: `${zone.hex}14` }}
+          style={{
+            color: zone.hex,
+            borderColor: zone.hex,
+            backgroundColor: `color-mix(in oklch, ${zone.hex} 8%, transparent)`,
+          }}
         >
           {zone.label}
         </span>
@@ -103,38 +107,38 @@ export function WorkloadCard({
             <line
               x1="100" y1="100"
               x2={point(t, 66)[0].toFixed(2)} y2={point(t, 66)[1].toFixed(2)}
-              stroke="#1a1a19" strokeWidth="3" strokeLinecap="round"
+              stroke="var(--foreground)" strokeWidth="3" strokeLinecap="round"
             />
-            <circle cx="100" cy="100" r="5" fill="#1a1a19" />
+            <circle cx="100" cy="100" r="5" fill="var(--foreground)" />
             <circle cx="100" cy="100" r="2" fill="#fff" />
           </g>
 
-          <text x="14" y="114" className="fill-neutral-400" style={{ fontSize: 9 }}>0%</text>
-          <text x="176" y="114" className="fill-neutral-400" style={{ fontSize: 9 }}>100%</text>
+          <text x="14" y="114" className="fill-muted-foreground" style={{ fontSize: 9 }}>0%</text>
+          <text x="176" y="114" className="fill-muted-foreground" style={{ fontSize: 9 }}>100%</text>
         </svg>
 
         <div className="-mt-1 text-center">
           <div className="text-[30px] font-semibold leading-none" style={{ color: zone.hex }}>
             {pct}%
           </div>
-          <p className="mt-1 text-[12px] text-neutral-500">
-            <span className="font-semibold text-neutral-900">{open}</span> of {total} apps
+          <p className="mt-1 text-[12px] text-muted-foreground">
+            <span className="font-semibold text-foreground">{open}</span> of {total} apps
             still open
           </p>
         </div>
       </div>
 
       {/* who is carrying it */}
-      <div className="mt-3 border-t border-neutral-100 px-4 py-3">
+      <div className="mt-3 border-t border-border/60 px-4 py-3">
         <div className="mb-2 flex items-baseline justify-between">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">
             Pressure by person
           </span>
-          <span className="text-[11px] text-neutral-400">share of open work</span>
+          <span className="text-[11px] text-muted-foreground/80">share of open work</span>
         </div>
 
         {people.length === 0 ? (
-          <p className="py-2 text-center text-[12px] text-neutral-400">
+          <p className="py-2 text-center text-[12px] text-muted-foreground/80">
             Nothing in flight.
           </p>
         ) : (
@@ -144,22 +148,26 @@ export function WorkloadCard({
               // so colour is relative to an even split across the team.
               const ratio = fairShare > 0 ? p.pct / fairShare : 0;
               const hex =
-                ratio > 1.5 ? "#d03b3b" : ratio > 1 ? "#fab219" : "#0ca30c";
+                ratio > 1.5
+                  ? "var(--st-rejected)"
+                  : ratio > 1
+                    ? "var(--st-in-review)"
+                    : "var(--st-production)";
 
               return (
                 <li key={p.name} className="flex items-center gap-2.5">
-                  <span className="w-[92px] shrink-0 truncate text-[12px] text-neutral-700">
+                  <span className="w-[92px] shrink-0 truncate text-[12px] text-foreground/85">
                     {p.name}
                   </span>
 
-                  <span className="relative flex h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-neutral-100">
+                  <span className="relative flex h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
                     <span
                       className="h-full rounded-full"
                       style={{ width: `${p.pct}%`, backgroundColor: hex }}
                     />
                     {/* where an even split would sit */}
                     <span
-                      className="absolute top-0 h-full w-px bg-neutral-400/60"
+                      className="absolute top-0 h-full w-px bg-muted-foreground/50"
                       style={{ left: `${fairShare}%` }}
                       title={`An even split would be ${Math.round(fairShare)}%`}
                     />
@@ -173,7 +181,7 @@ export function WorkloadCard({
                   </span>
 
                   <span
-                    className="w-14 shrink-0 text-right text-[11px] tabular-nums text-neutral-400"
+                    className="w-14 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/80"
                     title={`${p.open} open apps, weighted load ${p.load}`}
                   >
                     {p.open} open
@@ -185,7 +193,7 @@ export function WorkloadCard({
                         className="rounded px-1 text-[10px] font-semibold"
                         style={{
                           color: STATUSES.rejected.hex,
-                          backgroundColor: `${STATUSES.rejected.hex}18`,
+                          backgroundColor: `color-mix(in oklch, ${STATUSES.rejected.hex} 10%, transparent)`,
                         }}
                         title={`${p.attention} rejected, on hold or gone quiet`}
                       >
@@ -199,7 +207,7 @@ export function WorkloadCard({
           </ul>
         )}
 
-        <p className="mt-3 text-[11px] leading-relaxed text-neutral-400">
+        <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground/80">
           Share of the team&rsquo;s open work, weighted by effort — a fresh build or a
           rejection counts {EFFORT_WEIGHT.ongoing}&times;, anything just waiting on a store
           {" "}{EFFORT_WEIGHT.in_review}&times;. The tick marks an even split.
@@ -207,7 +215,7 @@ export function WorkloadCard({
 
         <Link
           href="/reports?tab=sheet&attention=1"
-          className="mt-3 inline-block text-[12px] font-medium text-neutral-500 hover:text-neutral-900"
+          className="mt-3 inline-block text-[12px] font-medium text-muted-foreground hover:text-foreground"
         >
           Review what needs action →
         </Link>

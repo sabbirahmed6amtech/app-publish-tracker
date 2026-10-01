@@ -220,24 +220,24 @@ export function AppsTable({
           <option value={15}>Open 15+ days</option>
         </select>
 
-        <label className="flex cursor-pointer select-none items-center gap-1.5 px-1 text-[12px] font-medium text-neutral-600">
+        <label className="flex cursor-pointer select-none items-center gap-1.5 px-1 text-[12px] font-medium text-foreground/70">
           <input
             type="checkbox"
             checked={attentionOnly}
             onChange={(e) => setAttentionOnly(e.target.checked)}
-            className="size-3.5 accent-neutral-900"
+            className="size-3.5 accent-foreground"
           />
           Needs attention
         </label>
 
-        <span className="h-5 w-px bg-neutral-200" />
+        <span className="h-5 w-px bg-muted" />
 
-        <label className="flex cursor-pointer select-none items-center gap-1.5 px-1 text-[12px] font-medium text-neutral-600">
+        <label className="flex cursor-pointer select-none items-center gap-1.5 px-1 text-[12px] font-medium text-foreground/70">
           <input
             type="checkbox"
             checked={grouped}
             onChange={(e) => setGrouped(e.target.checked)}
-            className="size-3.5 accent-neutral-900"
+            className="size-3.5 accent-foreground"
           />
           Group by release
         </label>
@@ -266,12 +266,12 @@ export function AppsTable({
         </button>
       </div>
 
-      <p className="px-1 text-[12px] text-neutral-500">
+      <p className="px-1 text-[12px] text-muted-foreground">
         {filtered.length} of {rows.length} apps
       </p>
 
       {filtered.length === 0 ? (
-        <div className="card px-4 py-10 text-center text-[13px] text-neutral-500">
+        <div className="card px-4 py-10 text-center text-[13px] text-muted-foreground">
           {rows.length === 0
             ? "No apps yet. Create a client, then a release, then add its apps."
             : "Nothing matches those filters."}
@@ -323,16 +323,16 @@ function GroupCard({
 
   return (
     <section className="card overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 bg-neutral-50/60 px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
         <div className="min-w-0">
           <Link
             href={`/releases/${head.release_id}`}
-            className="text-[14px] font-semibold text-neutral-900 hover:underline"
+            className="text-[14px] font-semibold text-foreground hover:underline"
           >
             {head.client_name} · v{head.release_version}
           </Link>
-          <span className="ml-2 font-mono text-[11px] text-neutral-400">#{head.ticket}</span>
-          <div className="mt-0.5 truncate text-[12px] text-neutral-500">
+          <span className="ml-2 font-mono text-[11px] text-muted-foreground/80">#{head.ticket}</span>
+          <div className="mt-0.5 truncate text-[12px] text-muted-foreground">
             {head.release_title ? `${head.release_title} · ` : ""}
             {head.release_assignee_name || "Unassigned"} · {rows.length} apps · {live} live
           </div>
@@ -366,11 +366,11 @@ function Table({
     return (
       <th className="th">
         <button
-          className="inline-flex items-center gap-1 hover:text-neutral-900"
+          className="inline-flex items-center gap-1 hover:text-foreground"
           onClick={() => setSort({ key: sortKey, dir: on && sort.dir === 1 ? -1 : 1 })}
         >
           {label}
-          <span className={on ? "text-neutral-900" : "text-transparent"}>
+          <span className={on ? "text-foreground" : "text-transparent"}>
             {on && sort.dir === -1 ? "↓" : "↑"}
           </span>
         </button>
@@ -381,7 +381,7 @@ function Table({
   return (
     <table className="w-full min-w-[900px] border-collapse">
       <thead>
-        <tr className="border-b border-neutral-200">
+        <tr className="border-b border-border">
           {showRelease && <Th label="Client / release" sortKey="client" />}
           <Th label="Platform" />
           <Th label="Project" sortKey="project" />
@@ -396,17 +396,17 @@ function Table({
         {rows.map((r) => (
           <tr
             key={r.id}
-            className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50/70"
+            className="border-b border-border/60 last:border-0 hover:bg-muted/40"
           >
             {showRelease && (
               <td className="td">
                 <Link
                   href={`/releases/${r.release_id}`}
-                  className="font-medium text-neutral-900 hover:underline"
+                  className="font-medium text-foreground hover:underline"
                 >
                   {r.client_name}
                 </Link>
-                <span className="ml-1.5 text-[11px] text-neutral-400">
+                <span className="ml-1.5 text-[11px] text-muted-foreground/80">
                   v{r.release_version}
                 </span>
               </td>
@@ -423,7 +423,7 @@ function Table({
                 {r.project_name}
               </span>
             </td>
-            <td className="td">{r.app_name || <span className="text-neutral-300">—</span>}</td>
+            <td className="td">{r.app_name || <span className="text-muted-foreground/50">—</span>}</td>
             <td className="td whitespace-nowrap">
               <InlineAssignee
                 appId={r.id}
@@ -438,7 +438,7 @@ function Table({
                 <StatusSelect appId={r.id} status={r.status} />
                 {isStale(r.status, r.status_changed_at) && (
                   <span
-                    className="text-[11px] font-medium text-neutral-400"
+                    className="text-[11px] font-medium text-muted-foreground/80"
                     title={`No status change in ${daysSince(r.status_changed_at)} days`}
                   >
                     {daysSince(r.status_changed_at)}d
@@ -462,12 +462,12 @@ function Table({
                   href={r.store_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-[12px] font-medium text-blue-600 hover:underline"
+                  className="text-[12px] font-medium text-info hover:underline"
                 >
                   Store ↗
                 </a>
               ) : (
-                <span className="text-neutral-300">—</span>
+                <span className="text-muted-foreground/50">—</span>
               )}
             </td>
           </tr>

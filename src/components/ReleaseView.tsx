@@ -228,7 +228,7 @@ export function ReleaseView({
                           <StatusSelect appId={app.id} status={app.status} />
                           {isStale(app.status, app.status_changed_at) && (
                             <span
-                              className="text-[11px] font-medium text-[#8a5a00]"
+                              className="text-[11px] font-medium text-warn"
                               title={`No change in ${daysSince(app.status_changed_at)} days`}
                             >
                               {daysSince(app.status_changed_at)}d

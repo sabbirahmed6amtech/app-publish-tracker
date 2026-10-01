@@ -75,12 +75,12 @@ export function CopyButton({
       className={`inline-flex shrink-0 items-center gap-1 rounded p-1 align-middle
                   transition-colors ${
                     state === "copied"
-                      ? "text-emerald-600"
+                      ? "text-good"
                       : state === "failed"
-                        ? "text-rose-600"
+                        ? "text-bad"
                         : tone === "dark"
-                          ? "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
-                          : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                          ? "text-muted-foreground/80 hover:bg-neutral-800 hover:text-neutral-100"
+                          : "text-muted-foreground/80 hover:bg-muted hover:text-foreground"
                   } ${className}`}
     >
       {copied ? (

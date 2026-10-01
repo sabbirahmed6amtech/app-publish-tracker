@@ -13,6 +13,7 @@ export const STATUSES: Record<
   AppStatus,
   {
     label: string;
+    /** A CSS colour (a variable, so it follows light and dark mode). */
     hex: string;
     dot: string;
     chip: string;
@@ -22,49 +23,49 @@ export const STATUSES: Record<
 > = {
   ongoing: {
     label: "Ongoing",
-    hex: "#3987e5",
-    dot: "bg-[#3987e5]",
-    chip: "bg-[#e8f1fc] text-[#184f95] ring-[#3987e5]/25",
+    hex: "var(--st-ongoing)",
+    dot: "bg-[var(--st-ongoing)]",
+    chip: "bg-[#e8f1fc] text-[#184f95] ring-[#3987e5]/25 dark:bg-[#3987e5]/16 dark:text-[#9cc4f5] dark:ring-[#3987e5]/40",
     glyph: "circle",
     group: "active",
   },
   in_review: {
     label: "In Review",
-    hex: "#fab219",
-    dot: "bg-[#fab219]",
-    chip: "bg-[#fef5e1] text-[#8a5a00] ring-[#fab219]/40",
+    hex: "var(--st-in-review)",
+    dot: "bg-[var(--st-in-review)]",
+    chip: "bg-[#fef5e1] text-[#8a5a00] ring-[#fab219]/40 dark:bg-[#fab219]/16 dark:text-[#f7c75a] dark:ring-[#fab219]/40",
     glyph: "half",
     group: "active",
   },
   closed_testing: {
     label: "Closed Testing",
-    hex: "#4a3aa7",
-    dot: "bg-[#4a3aa7]",
-    chip: "bg-[#eceafa] text-[#372b7d] ring-[#4a3aa7]/25",
+    hex: "var(--st-closed-testing)",
+    dot: "bg-[var(--st-closed-testing)]",
+    chip: "bg-[#eceafa] text-[#372b7d] ring-[#4a3aa7]/25 dark:bg-[#7b6be0]/16 dark:text-[#c3baf5] dark:ring-[#7b6be0]/40",
     glyph: "target",
     group: "active",
   },
   production: {
     label: "Production",
-    hex: "#0ca30c",
-    dot: "bg-[#0ca30c]",
-    chip: "bg-[#e7f6e7] text-[#076b07] ring-[#0ca30c]/25",
+    hex: "var(--st-production)",
+    dot: "bg-[var(--st-production)]",
+    chip: "bg-[#e7f6e7] text-[#076b07] ring-[#0ca30c]/25 dark:bg-[#0ca30c]/16 dark:text-[#86dc86] dark:ring-[#0ca30c]/40",
     glyph: "check",
     group: "done",
   },
   on_hold: {
     label: "On Hold",
-    hex: "#e87ba4",
-    dot: "bg-[#e87ba4]",
-    chip: "bg-[#fdeef3] text-[#a63b64] ring-[#e87ba4]/35",
+    hex: "var(--st-on-hold)",
+    dot: "bg-[var(--st-on-hold)]",
+    chip: "bg-[#fdeef3] text-[#a63b64] ring-[#e87ba4]/35 dark:bg-[#e87ba4]/16 dark:text-[#f5b0ca] dark:ring-[#e87ba4]/40",
     glyph: "pause",
     group: "attention",
   },
   rejected: {
     label: "Rejected",
-    hex: "#d03b3b",
-    dot: "bg-[#d03b3b]",
-    chip: "bg-[#fbebeb] text-[#9b2c2c] ring-[#d03b3b]/25",
+    hex: "var(--st-rejected)",
+    dot: "bg-[var(--st-rejected)]",
+    chip: "bg-[#fbebeb] text-[#9b2c2c] ring-[#d03b3b]/25 dark:bg-[#d03b3b]/16 dark:text-[#f5a3a3] dark:ring-[#d03b3b]/45",
     glyph: "cross",
     group: "attention",
   },
@@ -120,28 +121,28 @@ export const RELEASE_STATES: Record<
 > = {
   empty: {
     label: "No apps",
-    dot: "bg-neutral-300",
-    chip: "bg-neutral-100 text-neutral-500 ring-neutral-500/20",
+    dot: "bg-muted-foreground/40",
+    chip: "bg-muted text-muted-foreground ring-border",
   },
   in_progress: {
     label: "In progress",
-    dot: "bg-[#3987e5]",
-    chip: "bg-[#e8f1fc] text-[#184f95] ring-[#3987e5]/25",
+    dot: "bg-[var(--st-ongoing)]",
+    chip: "bg-info-soft text-info ring-[#3987e5]/30",
   },
   waiting: {
     label: "With the stores",
-    dot: "bg-[#fab219]",
-    chip: "bg-[#fef5e1] text-[#8a5a00] ring-[#fab219]/40",
+    dot: "bg-[var(--st-in-review)]",
+    chip: "bg-warn-soft text-warn ring-[#fab219]/40",
   },
   attention: {
     label: "Needs attention",
-    dot: "bg-[#d03b3b]",
-    chip: "bg-[#fbebeb] text-[#9b2c2c] ring-[#d03b3b]/25",
+    dot: "bg-[var(--st-rejected)]",
+    chip: "bg-bad-soft text-bad ring-[#d03b3b]/30",
   },
   complete: {
     label: "Complete",
-    dot: "bg-[#0ca30c]",
-    chip: "bg-[#e7f6e7] text-[#076b07] ring-[#0ca30c]/25",
+    dot: "bg-[var(--st-production)]",
+    chip: "bg-good-soft text-good ring-[#0ca30c]/30",
   },
 };
 
@@ -190,6 +191,13 @@ export function bumpBuild(build: string | null | undefined): string | null {
   if (code === undefined) return nextVersion;
   if (!/^\d+$/.test(code)) return null;
   return `${nextVersion}+${Number(code) + 1}`;
+}
+
+/** "rafi" -> "Rafi"; names someone already capitalised are left alone. */
+export function displayName(name: string): string {
+  return name === name.toLowerCase()
+    ? name.replace(/\b\p{L}/gu, (c) => c.toUpperCase())
+    : name;
 }
 
 export function formatDate(iso: string | null): string {

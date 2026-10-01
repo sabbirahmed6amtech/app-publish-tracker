@@ -89,9 +89,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         />
         <PageContainer>
           {loadError && (
-            <div className="card mb-5 border-rose-200 bg-rose-50 p-4 text-[13px] text-rose-800">
+            <div className="card mb-5 border-bad/30 bg-bad-soft p-4 text-[13px] text-bad">
               <strong className="font-semibold">Could not load data.</strong> {loadError}
-              <div className="mt-1 text-rose-700">
+              <div className="mt-1 text-bad">
                 If the tables look wrong, re-run{" "}
                 <code className="font-mono">supabase/schema.sql</code> — it resets to the
                 release-based schema.

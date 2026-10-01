@@ -343,7 +343,7 @@ function AppsTab({
                               href={p.store_url}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex min-w-0 items-center gap-1 text-[12px] font-medium text-blue-600 hover:underline"
+                              className="inline-flex min-w-0 items-center gap-1 text-[12px] font-medium text-info hover:underline"
                             >
                               <span className="truncate">
                                 {p.store_url.replace(/^https?:\/\//, "")}

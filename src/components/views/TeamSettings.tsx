@@ -31,7 +31,7 @@ export async function TeamSettings() {
       <section className="card overflow-hidden">
         <table className="w-full border-collapse">
           <thead>
-            <tr className="border-b border-neutral-200">
+            <tr className="border-b border-border">
               <th className="th">Name</th>
               <th className="th">Email</th>
               <th className="th">Login</th>
@@ -46,17 +46,17 @@ export async function TeamSettings() {
               return (
                 <tr
                   key={m.id}
-                  className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50/70"
+                  className="border-b border-border/60 last:border-0 hover:bg-muted/40"
                 >
-                  <td className="td font-medium text-neutral-900">{m.name}</td>
-                  <td className="td text-neutral-600">
-                    {m.email || <span className="text-neutral-300">—</span>}
+                  <td className="td font-medium text-foreground">{m.name}</td>
+                  <td className="td text-foreground/70">
+                    {m.email || <span className="text-muted-foreground/50">—</span>}
                   </td>
                   <td className="td">
                     {m.user_id ? (
                       <Tag>Supabase Auth</Tag>
                     ) : (
-                      <span className="text-[12px] text-neutral-400">No login</span>
+                      <span className="text-[12px] text-muted-foreground/80">No login</span>
                     )}
                   </td>
                   <td className="td">{count}</td>
@@ -64,8 +64,8 @@ export async function TeamSettings() {
                     <span
                       className={`rounded-full px-2 py-0.5 text-[12px] font-medium ring-1 ring-inset ${
                         m.active
-                          ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
-                          : "bg-neutral-100 text-neutral-500 ring-neutral-500/20"
+                          ? "bg-good-soft text-good ring-good/30"
+                          : "bg-muted text-muted-foreground ring-border"
                       }`}
                     >
                       {m.active ? "Active" : "Inactive"}
@@ -110,7 +110,7 @@ export async function TeamSettings() {
         </table>
 
         {team.length === 0 && (
-          <p className="px-4 py-10 text-center text-[13px] text-neutral-400">
+          <p className="px-4 py-10 text-center text-[13px] text-muted-foreground/80">
             No members yet. Add a Supabase Auth user, or add someone here directly.
           </p>
         )}

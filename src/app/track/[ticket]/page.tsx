@@ -15,7 +15,13 @@ import {
   type TrackerClient,
   type TrackerRelease,
 } from "@/lib/queries";
-import { PIPELINE_ORDER, PLATFORMS, STATUSES, formatDate } from "@/lib/constants";
+import {
+  PIPELINE_ORDER,
+  PLATFORMS,
+  STATUSES,
+  displayName,
+  formatDate,
+} from "@/lib/constants";
 import type { Platform } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -111,10 +117,10 @@ function Overview({
     total === 0
       ? { label: "Getting started", tone: "bg-muted text-muted-foreground" }
       : live === total
-        ? { label: "All live", tone: "bg-[#e7f6e7] text-[#076b07]" }
+        ? { label: "All live", tone: "bg-good-soft text-good" }
         : blocked
-          ? { label: "Needs attention", tone: "bg-[#fbebeb] text-[#9b2c2c]" }
-          : { label: "In progress", tone: "bg-[#e8f1fc] text-[#184f95]" };
+          ? { label: "Needs attention", tone: "bg-bad-soft text-bad" }
+          : { label: "In progress", tone: "bg-info-soft text-info" };
 
   // The same plain-text report the team pastes, from public fields only.
   const report = buildReport(
@@ -187,7 +193,7 @@ function Overview({
         </div>
         <div className="h-2.5 overflow-hidden rounded-full bg-muted">
           <div
-            className="tracker-fill h-full rounded-full bg-[#0ca30c]"
+            className="tracker-fill h-full rounded-full bg-[var(--st-production)]"
             style={{ width: `${pct}%` }}
           />
         </div>
@@ -414,12 +420,6 @@ function Avatar({ name, size = "sm" }: { name: string; size?: "xs" | "sm" }) {
   );
 }
 
-/** "rafi" -> "Rafi"; names someone already capitalised are left alone. */
-function displayName(name: string): string {
-  return name === name.toLowerCase()
-    ? name.replace(/\b\p{L}/gu, (c) => c.toUpperCase())
-    : name;
-}
 
 /** "3 days", "5 hours", "just now" — how long something has been the case. */
 function duration(iso: string): string {

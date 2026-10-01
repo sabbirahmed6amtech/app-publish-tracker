@@ -29,7 +29,7 @@ export function KeystoreDownloadButton({
       <button type="button" className={className} onClick={download} disabled={pending}>
         {pending ? <Spinner /> : "Download"}
       </button>
-      {error && <span className="text-[12px] text-rose-600">{error}</span>}
+      {error && <span className="text-[12px] text-bad">{error}</span>}
     </span>
   );
 }

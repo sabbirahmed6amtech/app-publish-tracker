@@ -36,7 +36,7 @@ export function BrandLoader({
         {[0, 1, 2].map((i) => (
           <span
             key={i}
-            className="loader-dot size-1.5 rounded-full bg-[#0ca30c]"
+            className="loader-dot size-1.5 rounded-full bg-[var(--st-production)]"
             style={{ animationDelay: `${i * 0.15}s` }}
           />
         ))}

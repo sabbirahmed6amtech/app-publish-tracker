@@ -92,13 +92,13 @@ export function ClientDialog({
             </div>
 
             {error && (
-              <p className="rounded-md bg-rose-50 px-2.5 py-2 text-[12px] text-rose-700">
+              <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[12px] text-bad">
                 {error}
               </p>
             )}
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-neutral-200 px-5 py-3">
+          <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
             <button type="button" className="btn btn-secondary" onClick={() => setOpen(false)}>
               Cancel
             </button>

@@ -40,8 +40,8 @@ export function CopyReportButton({
             ? "Could not copy — check clipboard permissions"
             : `${report.split("\n").length} lines`
       }
-      className={`${className} ${state === "copied" ? "text-emerald-700" : ""} ${
-        state === "failed" ? "text-rose-700" : ""
+      className={`${className} ${state === "copied" ? "text-good" : ""} ${
+        state === "failed" ? "text-bad" : ""
       }`}
     >
       {state === "copied" ? (
@@ -63,7 +63,7 @@ export function CopyReportButton({
         <>
           {label}
           {count !== undefined && count > 1 && (
-            <span className="text-neutral-400">({count})</span>
+            <span className="text-muted-foreground/80">({count})</span>
           )}
         </>
       )}

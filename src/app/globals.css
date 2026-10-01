@@ -10,6 +10,28 @@
 
 :root {
   color-scheme: light;
+
+  /*
+   * Status colours (dots, glyphs, chart series) and the four tones used for
+   * coloured text and soft backgrounds. Dark mode redefines them below so the
+   * same class names work on both themes.
+   */
+  --st-ongoing: #3987e5;
+  --st-in-review: #fab219;
+  --st-closed-testing: #4a3aa7;
+  --st-production: #0ca30c;
+  --st-on-hold: #e87ba4;
+  --st-rejected: #d03b3b;
+
+  --tone-good: #076b07;
+  --tone-good-soft: #e7f6e7;
+  --tone-warn: #8a5a00;
+  --tone-warn-soft: #fef5e1;
+  --tone-bad: #9b2c2c;
+  --tone-bad-soft: #fbebeb;
+  --tone-info: #184f95;
+  --tone-info-soft: #e8f1fc;
+
   /* A faint cool-grey canvas so white cards and panels read as surfaces. */
   --background: oklch(0.982 0.002 247);
   --foreground: oklch(0.145 0 0);
@@ -187,7 +209,7 @@ body {
 
 @layer components {
   .skeleton {
-    @apply relative overflow-hidden rounded bg-neutral-200/70;
+    @apply relative overflow-hidden rounded bg-muted;
   }
 
   .skeleton::after {
@@ -198,7 +220,7 @@ body {
     background: linear-gradient(
       90deg,
       transparent,
-      rgba(255, 255, 255, 0.65),
+      color-mix(in oklch, var(--background) 65%, transparent),
       transparent
     );
     animation: skeleton-sweep 1.5s ease-in-out infinite;
@@ -265,6 +287,14 @@ body {
 }
 
 @theme inline {
+  --color-good: var(--tone-good);
+  --color-good-soft: var(--tone-good-soft);
+  --color-warn: var(--tone-warn);
+  --color-warn-soft: var(--tone-warn-soft);
+  --color-bad: var(--tone-bad);
+  --color-bad-soft: var(--tone-bad-soft);
+  --color-info: var(--tone-info);
+  --color-info-soft: var(--tone-info-soft);
   --font-heading: var(--font-sans);
   --font-sans: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -308,36 +338,54 @@ body {
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  color-scheme: dark;
+  /* Deep purple vanishes on a dark card; this one keeps 4.3:1. */
+  --st-closed-testing: #7b6be0;
+
+  --tone-good: #86dc86;
+  --tone-good-soft: color-mix(in oklch, #0ca30c 18%, transparent);
+  --tone-warn: #f7c75a;
+  --tone-warn-soft: color-mix(in oklch, #fab219 16%, transparent);
+  --tone-bad: #f5a3a3;
+  --tone-bad-soft: color-mix(in oklch, #d03b3b 18%, transparent);
+  --tone-info: #9cc4f5;
+  --tone-info-soft: color-mix(in oklch, #3987e5 18%, transparent);
+
+  /*
+   * Softer than shadcn's stock dark: a lifted charcoal instead of near-black,
+   * an off-white instead of pure white, and a faint cool tint to match the
+   * light theme. Text stays 12.7:1 on cards, secondary text 5.9:1.
+   */
+  --background: oklch(0.185 0.006 260);
+  --foreground: oklch(0.9 0.005 260);
+  --card: oklch(0.225 0.006 260);
+  --card-foreground: oklch(0.9 0.005 260);
+  --popover: oklch(0.245 0.006 260);
+  --popover-foreground: oklch(0.9 0.005 260);
+  --primary: oklch(0.82 0.005 260);
+  --primary-foreground: oklch(0.2 0.006 260);
+  --secondary: oklch(0.285 0.006 260);
+  --secondary-foreground: oklch(0.9 0.005 260);
+  --muted: oklch(0.285 0.006 260);
+  --muted-foreground: oklch(0.68 0.008 260);
+  --accent: oklch(0.285 0.006 260);
+  --accent-foreground: oklch(0.9 0.005 260);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 12%);
   --ring: oklch(0.556 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar: oklch(0.205 0.006 260);
+  --sidebar-foreground: oklch(0.9 0.005 260);
   --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-primary-foreground: oklch(0.9 0.005 260);
+  --sidebar-accent: oklch(0.285 0.006 260);
+  --sidebar-accent-foreground: oklch(0.9 0.005 260);
+  --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.556 0 0);
 }
 

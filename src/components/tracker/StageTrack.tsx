@@ -40,11 +40,11 @@ export function StageTrack({ status, platform }: { status: AppStatus; platform: 
         const done = i < at || (live && i === at);
         const current = i === at && !live;
         const tone = done
-          ? "bg-[#0ca30c] text-white border-[#0ca30c]"
+          ? "bg-[var(--st-production)] text-white border-[var(--st-production)]"
           : current && problem === "rejected"
-            ? "bg-[#d03b3b] text-white border-[#d03b3b]"
+            ? "bg-[var(--st-rejected)] text-white border-[var(--st-rejected)]"
             : current && problem === "hold"
-              ? "bg-[#e87ba4] text-white border-[#e87ba4]"
+              ? "bg-[var(--st-on-hold)] text-white border-[var(--st-on-hold)]"
               : current
                 ? "bg-background border-foreground"
                 : "bg-background border-border";
@@ -56,7 +56,7 @@ export function StageTrack({ status, platform }: { status: AppStatus; platform: 
                 {i <= at && (
                   // Finished segments draw in left to right, one after another.
                   <span
-                    className="tracker-fill absolute inset-0 bg-[#0ca30c]"
+                    className="tracker-fill absolute inset-0 bg-[var(--st-production)]"
                     style={{ animationDelay: `${0.35 + i * 0.18}s` }}
                   />
                 )}

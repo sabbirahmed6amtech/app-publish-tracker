@@ -59,15 +59,15 @@ export function ClientsList({ clients }: { clients: ClientCard[] }) {
             Clear
           </button>
         )}
-        <span className="shrink-0 px-1 text-[12px] tabular-nums text-neutral-400">
+        <span className="shrink-0 px-1 text-[12px] tabular-nums text-muted-foreground/80">
           {filtered.length}/{clients.length}
         </span>
       </div>
 
       {filtered.length === 0 ? (
         <div className="card px-6 py-14 text-center">
-          <p className="text-[14px] font-medium text-neutral-800">No client matches that.</p>
-          <p className="mt-1 text-[13px] text-neutral-500">
+          <p className="text-[14px] font-medium text-foreground">No client matches that.</p>
+          <p className="mt-1 text-[13px] text-muted-foreground">
             Try a ticket number, a store account, or a person&rsquo;s name.
           </p>
         </div>
@@ -82,14 +82,14 @@ export function ClientsList({ clients }: { clients: ClientCard[] }) {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-[15px] font-semibold text-neutral-900">{c.name}</span>
-                    <span className="font-mono text-[11px] text-neutral-400">#{c.ticket}</span>
+                    <span className="text-[15px] font-semibold text-foreground">{c.name}</span>
+                    <span className="font-mono text-[11px] text-muted-foreground/80">#{c.ticket}</span>
                   </div>
                   {/* one element per account — joined spaces collapse in HTML
                       and run two account names together */}
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-neutral-500">
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-muted-foreground">
                     {c.accounts.length === 0 ? (
-                      <span className="text-neutral-400">No store account yet</span>
+                      <span className="text-muted-foreground/80">No store account yet</span>
                     ) : (
                       c.accounts.map((a) => (
                         <span key={a.platform} className="inline-flex items-center gap-1.5">
@@ -101,24 +101,24 @@ export function ClientsList({ clients }: { clients: ClientCard[] }) {
                   </div>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-5 text-[12px] text-neutral-500">
+                <div className="flex shrink-0 items-center gap-5 text-[12px] text-muted-foreground">
                   <span>
                     {c.totalApps} {c.totalApps === 1 ? "app" : "apps"} · {c.releaseCount}{" "}
                     {c.releaseCount === 1 ? "release" : "releases"}
                   </span>
                   {c.latest ? (
                     <span className="text-right">
-                      <span className="flex items-center justify-end gap-1.5 text-[13px] font-medium text-neutral-900">
+                      <span className="flex items-center justify-end gap-1.5 text-[13px] font-medium text-foreground">
                         <span className={`size-2 rounded-full ${RELEASE_STATES[c.latest.state].dot}`} />
                         v{c.latest.version}
                       </span>
-                      <span className="text-[11px] text-neutral-400">
+                      <span className="text-[11px] text-muted-foreground/80">
                         {c.latest.assignee ? `${c.latest.assignee} · ` : ""}
                         {formatDate(c.latest.date)}
                       </span>
                     </span>
                   ) : (
-                    <span className="text-neutral-400">No releases</span>
+                    <span className="text-muted-foreground/80">No releases</span>
                   )}
                 </div>
               </div>

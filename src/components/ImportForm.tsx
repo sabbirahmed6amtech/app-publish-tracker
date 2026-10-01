@@ -149,9 +149,9 @@ export function ImportForm() {
   return (
     <div className="space-y-4">
       <section className="card overflow-hidden">
-        <div className="border-b border-neutral-200 px-4 py-2.5">
-          <h2 className="text-[13px] font-semibold text-neutral-900">Paste rows</h2>
-          <p className="text-[11px] text-neutral-500">
+        <div className="border-b border-border px-4 py-2.5">
+          <h2 className="text-[13px] font-semibold text-foreground">Paste rows</h2>
+          <p className="text-[11px] text-muted-foreground">
             Tab-separated (straight out of Sheets) or CSV. Blank grouping cells carry down
             from the row above.
           </p>
@@ -162,7 +162,7 @@ export function ImportForm() {
             {COLUMNS.map((col, i) => (
               <span
                 key={col}
-                className="rounded border border-neutral-200 bg-neutral-50 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500"
+                className="rounded border border-border bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
               >
                 {i + 1}. {col}
               </span>
@@ -181,17 +181,17 @@ export function ImportForm() {
           />
 
           <div className="mt-2 flex flex-wrap items-center gap-4">
-            <label className="flex cursor-pointer select-none items-center gap-1.5 text-[12px] text-neutral-600">
+            <label className="flex cursor-pointer select-none items-center gap-1.5 text-[12px] text-foreground/70">
               <input
                 type="checkbox"
                 checked={hasHeader}
                 onChange={(e) => setHasHeader(e.target.checked)}
-                className="size-3.5 accent-neutral-900"
+                className="size-3.5 accent-foreground"
               />
               First line is a header row
             </label>
 
-            <label className="flex items-center gap-1.5 text-[12px] text-neutral-600">
+            <label className="flex items-center gap-1.5 text-[12px] text-foreground/70">
               Version for rows that have none
               <input
                 value={fallbackVersion}
@@ -205,11 +205,11 @@ export function ImportForm() {
 
       {parsed.rows.length > 0 && (
         <section className="card overflow-hidden">
-          <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-2.5">
-            <h2 className="text-[13px] font-semibold text-neutral-900">
+          <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+            <h2 className="text-[13px] font-semibold text-foreground">
               Preview — {parsed.rows.length} rows
               {parsed.skipped > 0 && (
-                <span className="ml-2 font-normal text-neutral-500">
+                <span className="ml-2 font-normal text-muted-foreground">
                   ({parsed.skipped} skipped: no ticket or project)
                 </span>
               )}
@@ -227,7 +227,7 @@ export function ImportForm() {
 
           <div className="max-h-[420px] overflow-auto">
             <table className="w-full min-w-[900px] border-collapse">
-              <thead className="sticky top-0 bg-white shadow-[0_1px_0_#e5e5e5]">
+              <thead className="sticky top-0 bg-card shadow-[0_1px_0_var(--border)]">
                 <tr>
                   <th className="th">Ticket</th>
                   <th className="th">Client</th>
@@ -241,7 +241,7 @@ export function ImportForm() {
               </thead>
               <tbody>
                 {parsed.rows.map((r, i) => (
-                  <tr key={i} className="border-b border-neutral-100 last:border-0">
+                  <tr key={i} className="border-b border-border/60 last:border-0">
                     <td className="td font-mono text-[12px]">{r.ticket}</td>
                     <td className="td">{r.client_name}</td>
                     <td className="td font-mono text-[12px]">{r.release_version}</td>
@@ -265,12 +265,12 @@ export function ImportForm() {
       )}
 
       {result && (
-        <p className="rounded-md bg-emerald-50 px-3 py-2 text-[13px] text-emerald-800">
+        <p className="rounded-md bg-good-soft px-3 py-2 text-[13px] text-good">
           {result}
         </p>
       )}
       {error && (
-        <p className="rounded-md bg-rose-50 px-3 py-2 text-[13px] text-rose-700">{error}</p>
+        <p className="rounded-md bg-bad-soft px-3 py-2 text-[13px] text-bad">{error}</p>
       )}
     </div>
   );

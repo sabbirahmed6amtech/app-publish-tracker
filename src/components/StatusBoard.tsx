@@ -226,8 +226,8 @@ export function StatusBoard({
                 className={`text-[22px] font-semibold tabular-nums ${
                   count && f.key !== "unassigned"
                     ? f.key === "attention"
-                      ? "text-[#9b2c2c]"
-                      : "text-[#8a5a00]"
+                      ? "text-bad"
+                      : "text-warn"
                     : ""
                 }`}
               >
@@ -508,7 +508,7 @@ function BoardCard({
         )}
         <span
           className={`ml-auto text-[11px] tabular-nums ${
-            stale ? "font-semibold text-[#8a5a00]" : "text-muted-foreground"
+            stale ? "font-semibold text-warn" : "text-muted-foreground"
           }`}
           title={`${days} days in ${STATUSES[status].label}`}
         >

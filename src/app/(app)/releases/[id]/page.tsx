@@ -3,18 +3,29 @@ import { notFound } from "next/navigation";
 import { ChevronRightIcon } from "lucide-react";
 import { DeleteButton } from "@/components/RowActions";
 import { ReleaseView } from "@/components/ReleaseView";
-import { getActivityForApps, getProductLines, getRelease, getTeam } from "@/lib/queries";
+import { ActivityTimeline, type TimelineApp } from "@/components/ActivityTimeline";
+import {
+  getActivityPage,
+  getProductLines,
+  getRelease,
+  getTeam,
+  lineBadges,
+} from "@/lib/queries";
 import { deleteRelease } from "@/lib/actions";
-import { STATUSES, daysSince } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
+const ACTIVITY_PAGE_SIZE = 10;
+
 export default async function ReleasePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ activity?: string }>;
 }) {
   const { id } = await params;
+  const requested = Math.max(1, Number((await searchParams).activity) || 1);
   const [detail, roster, lines] = await Promise.all([
     getRelease(id),
     getTeam(),
@@ -24,8 +35,28 @@ export default async function ReleasePage({
 
   const { release, client, accounts, keystores, products, siblings } = detail;
   const apps = release.apps;
-  const events = await getActivityForApps(apps.map((a) => a.id)).catch(() => []);
-  const appNames = new Map(apps.map((a) => [a.id, a.app_name || a.project_name]));
+  const accountPlatform = new Map(accounts.map((a) => [a.id, a.platform]));
+  const timelineApps = new Map<string, TimelineApp>(
+    apps.map((a) => [
+      a.id,
+      {
+        name: a.app_name || a.project_name,
+        project: a.project_name,
+        platform: accountPlatform.get(a.account_id) ?? "play_store",
+      },
+    ]),
+  );
+  let activity = await getActivityPage(
+    apps.map((a) => a.id),
+    requested,
+    ACTIVITY_PAGE_SIZE,
+  ).catch(() => ({ events: [], total: 0 }));
+  // A page past the end (say, after a link was shared) falls back to the last one.
+  const lastPage = Math.max(1, Math.ceil(activity.total / ACTIVITY_PAGE_SIZE));
+  const activityPage = Math.min(requested, lastPage);
+  if (activityPage !== requested) {
+    activity = await getActivityPage(apps.map((a) => a.id), activityPage, ACTIVITY_PAGE_SIZE);
+  }
   const isCurrent = siblings[0]?.id === release.id;
 
   return (
@@ -56,34 +87,15 @@ export default async function ReleasePage({
         lines={lines}
       />
 
-      {events.length > 0 && (
-        <section className="card mt-4 overflow-hidden">
-          <div className="border-b px-4 py-2.5">
-            <h2 className="text-[13px] font-semibold">Activity</h2>
-          </div>
-          <ul className="divide-y">
-            {events.map((e) => (
-              <li key={e.id} className="flex items-center gap-3 px-4 py-2 text-[13px]">
-                <span className="w-24 shrink-0 text-[11px] text-muted-foreground">
-                  {new Date(e.created_at).toLocaleDateString()}
-                </span>
-                <span className="min-w-0 flex-1 truncate">
-                  <strong className="font-medium">{appNames.get(e.app_id) ?? "App"}</strong>{" "}
-                  <span className="text-muted-foreground">
-                    {e.kind === "status" && e.from_status && e.to_status
-                      ? `${STATUSES[e.from_status].label} → ${STATUSES[e.to_status].label}`
-                      : e.message || e.kind}
-                  </span>
-                </span>
-                {e.actor && <span className="text-[11px] text-muted-foreground">{e.actor}</span>}
-                <span className="w-16 text-right text-[11px] text-muted-foreground">
-                  {daysSince(e.created_at)}d ago
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <ActivityTimeline
+        events={activity.events}
+        apps={timelineApps}
+        badges={lineBadges(lines)}
+        page={activityPage}
+        pageSize={ACTIVITY_PAGE_SIZE}
+        total={activity.total}
+        hrefFor={(n) => `/releases/${release.id}${n > 1 ? `?activity=${n}` : ""}#activity`}
+      />
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3">
         <p className="text-[12px] text-muted-foreground">

@@ -218,18 +218,24 @@ export function buildStats(clients: ClientFull[], rows: AppRow[]): Stats {
   };
 }
 
-export async function getActivityForApps(appIds: string[], limit = 30): Promise<AppEvent[]> {
-  if (appIds.length === 0) return [];
+/** One page of activity for some apps, newest first, with the total count. */
+export async function getActivityPage(
+  appIds: string[],
+  page: number,
+  pageSize: number,
+): Promise<{ events: AppEvent[]; total: number }> {
+  if (appIds.length === 0) return { events: [], total: 0 };
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const from = (page - 1) * pageSize;
+  const { data, error, count } = await supabase
     .from("app_events")
-    .select("*")
+    .select("*", { count: "exact" })
     .in("app_id", appIds)
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .range(from, from + pageSize - 1);
 
   if (error) throw new Error(error.message);
-  return (data ?? []) as AppEvent[];
+  return { events: (data ?? []) as AppEvent[], total: count ?? 0 };
 }
 
 export async function getRecentActivity(limit = 15) {
