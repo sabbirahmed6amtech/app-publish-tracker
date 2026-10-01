@@ -302,3 +302,81 @@ export function projectSuggestions(lines: ProductLine[], clients: ClientFull[]):
   for (const c of clients) for (const p of c.products) names.add(p.project_name);
   return [...names].sort((a, b) => a.localeCompare(b));
 }
+
+// ----------------------------------------------------------- public tracker
+
+export type TrackerMatch = { ticket: string; name: string; apps: string | null };
+
+export type TrackerApp = {
+  app_name: string;
+  project: string;
+  platform: Platform;
+  status: AppStatus;
+  build: string | null;
+  status_changed_at: string;
+  /** Display name only. */
+  assignee: string | null;
+  store_url: string | null;
+  line: string | null;
+  /** Public logo URL, resolved from the line's stored path. */
+  logo: string | null;
+};
+
+export type TrackerRelease = {
+  version: string;
+  title: string | null;
+  started_on: string;
+  released_on: string | null;
+  /** Who is running this release — display name only. */
+  assignee: string | null;
+  apps: TrackerApp[];
+};
+
+export type TrackerClient = {
+  ticket: string;
+  name: string;
+  releases: TrackerRelease[];
+  activity: {
+    app: string;
+    platform: Platform;
+    version: string;
+    from: AppStatus | null;
+    to: AppStatus | null;
+    at: string;
+  }[];
+};
+
+/** Public search: clients by name, ticket or store listing name. */
+export async function trackerSearch(q: string): Promise<TrackerMatch[]> {
+  if (q.trim().length < 2) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("tracker_search", { q });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as TrackerMatch[];
+}
+
+/** Public status of one client, or null if there's no such client. */
+export async function trackerClient(ticket: string): Promise<TrackerClient | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("tracker_client", { p_ticket: ticket });
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+
+  const client = data as Omit<TrackerClient, "releases"> & {
+    releases: (Omit<TrackerRelease, "apps"> & {
+      apps: (Omit<TrackerApp, "logo"> & { logo_path: string | null })[];
+    })[];
+  };
+  return {
+    ...client,
+    releases: client.releases.map((r) => ({
+      ...r,
+      apps: r.apps.map(({ logo_path, ...a }) => ({
+        ...a,
+        logo: logo_path
+          ? supabase.storage.from("logos").getPublicUrl(logo_path).data.publicUrl
+          : null,
+      })),
+    })),
+  };
+}

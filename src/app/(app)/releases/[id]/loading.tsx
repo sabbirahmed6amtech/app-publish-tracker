@@ -1,3 +1,4 @@
+import { BrandLoader } from "@/components/BrandLoader";
 import {
   PageHeaderSkeleton,
   StatStripSkeleton,
@@ -7,6 +8,9 @@ import {
 export default function ReleaseLoading() {
   return (
     <>
+      <BrandLoader
+        messages={["Opening the release…", "Loading submissions…", "Checking store status…"]}
+      />
       <PageHeaderSkeleton tags />
       <StatStripSkeleton />
       <div className="space-y-4">

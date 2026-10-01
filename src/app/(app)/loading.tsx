@@ -1,26 +1,28 @@
-import {
-  ListCardSkeleton,
-  PageHeaderSkeleton,
-  StatStripSkeleton,
-} from "@/components/Skeleton";
+import { BrandLoader } from "@/components/BrandLoader";
+import { PageHeaderSkeleton } from "@/components/Skeleton";
 
-export default function DashboardLoading() {
+/** My work: the loader over the board's shape — focus cards, then six columns. */
+export default function MyWorkLoading() {
   return (
     <>
+      <BrandLoader
+        messages={["Loading your board…", "Gathering every app…", "Sorting by status…"]}
+      />
       <PageHeaderSkeleton />
-      <StatStripSkeleton />
-      <div className="card mb-4 space-y-3 px-4 py-4">
-        <div className="skeleton h-3 w-20 rounded" />
-        <div className="skeleton h-2 w-full rounded-full" />
-        <div className="flex gap-5">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="skeleton h-3 w-24 rounded" />
-          ))}
-        </div>
+      <div className="mb-4 grid gap-2 sm:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="skeleton h-14 rounded-xl" />
+        ))}
       </div>
-      <div className="grid gap-4 xl:grid-cols-2">
-        <ListCardSkeleton rows={5} />
-        <ListCardSkeleton rows={3} />
+      <div className="grid auto-cols-[minmax(260px,1fr)] grid-flow-col gap-3 overflow-hidden">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="space-y-2 rounded-xl border-2 border-dashed p-2">
+            <div className="skeleton h-4 w-24" />
+            {Array.from({ length: 3 - (i % 3) }).map((_, j) => (
+              <div key={j} className="skeleton h-20 rounded-lg" />
+            ))}
+          </div>
+        ))}
       </div>
     </>
   );

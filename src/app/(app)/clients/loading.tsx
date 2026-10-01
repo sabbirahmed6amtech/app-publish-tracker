@@ -1,8 +1,12 @@
+import { BrandLoader } from "@/components/BrandLoader";
 import { Line, PageHeaderSkeleton } from "@/components/Skeleton";
 
 export default function ClientsLoading() {
   return (
     <>
+      <BrandLoader
+        messages={["Loading clients…", "Checking their releases…", "Almost there…"]}
+      />
       <PageHeaderSkeleton />
       <div className="space-y-2.5">
         {Array.from({ length: 6 }).map((_, i) => (
