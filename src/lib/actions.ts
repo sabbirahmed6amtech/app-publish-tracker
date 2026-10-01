@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient as db } from "@/lib/supabase/server";
-import { bumpBuild, suggestNextVersion } from "@/lib/constants";
+import { PLAY_LIMITS, bumpBuild, suggestNextVersion } from "@/lib/constants";
 import type { AccountType, AppStatus, Platform } from "@/lib/types";
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
@@ -491,6 +491,68 @@ function duplicateProduct(error: { code?: string; message: string }) {
   return error.code === "23505"
     ? "That project already exists on this store for this client."
     : error.message;
+}
+
+/** The Play Console details shared by every app of a client. */
+export async function saveClientPlayDetails(fd: FormData): Promise<ActionResult> {
+  const id = str(fd, "id");
+  const supabase = await db();
+  const { error } = await supabase
+    .from("clients")
+    .update({
+      play_privacy_url: nullable(fd, "play_privacy_url"),
+      play_delete_account_url: nullable(fd, "play_delete_account_url"),
+      play_contact_email: nullable(fd, "play_contact_email"),
+      play_listing_email: nullable(fd, "play_listing_email"),
+      play_contact_phone: nullable(fd, "play_contact_phone"),
+      play_website: nullable(fd, "play_website"),
+      play_default_language: nullable(fd, "play_default_language"),
+    })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true, id };
+}
+
+/** One app's Play Console listing and App Review login. */
+export async function saveProductListing(fd: FormData): Promise<ActionResult> {
+  const id = str(fd, "id");
+  const short = nullable(fd, "short_description");
+  const long = nullable(fd, "long_description");
+  if (short && short.length > PLAY_LIMITS.shortDescription) {
+    return {
+      ok: false,
+      error: `The short description is over ${PLAY_LIMITS.shortDescription} characters.`,
+    };
+  }
+  if (long && long.length > PLAY_LIMITS.longDescription) {
+    return {
+      ok: false,
+      error: `The full description is over ${PLAY_LIMITS.longDescription} characters.`,
+    };
+  }
+  const packageName = nullable(fd, "package_name");
+  if (packageName && !/^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*)+$/.test(packageName)) {
+    return { ok: false, error: "That doesn't look like a package name (e.g. com.client.app)." };
+  }
+
+  const supabase = await db();
+  const { error } = await supabase
+    .from("products")
+    .update({
+      package_name: packageName,
+      play_category: nullable(fd, "play_category"),
+      short_description: short,
+      long_description: long,
+      demo_instructions: nullable(fd, "demo_instructions"),
+      demo_login: nullable(fd, "demo_login"),
+      demo_password: nullable(fd, "demo_password"),
+      demo_details: nullable(fd, "demo_details"),
+    })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true, id };
 }
 
 /** Archived apps stay in history but aren't submitted in new releases. */

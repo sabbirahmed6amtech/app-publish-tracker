@@ -17,6 +17,10 @@ import { AccountDialog } from "@/components/dialogs/AccountDialog";
 import { ReleaseDialog } from "@/components/dialogs/ReleaseDialog";
 import { KeystoreDialog } from "@/components/dialogs/KeystoreDialog";
 import { ProductDialog } from "@/components/dialogs/ProductDialog";
+import { ListingDialog } from "@/components/dialogs/ListingDialog";
+import { ClientPlayDialog } from "@/components/dialogs/ClientPlayDialog";
+import { PublishPanel } from "@/components/PublishPanel";
+import { publishChecks, publishData } from "@/lib/publish";
 import {
   getClient,
   activeMembers,
@@ -374,6 +378,30 @@ function AppsTab({
                             trigger="Edit"
                             className="btn btn-ghost h-7 px-2"
                           />
+                          {group.platform === "play_store" && !p.archived && (
+                            <>
+                              <ListingDialog
+                                product={p}
+                                trigger={
+                                  <span className="inline-flex items-center gap-1.5">
+                                    Listing
+                                    {publishChecks(publishData(client, p)).some((c) => !c.ok) && (
+                                      <span
+                                        className="size-1.5 rounded-full bg-[var(--st-in-review)]"
+                                        title="Some Play details are missing"
+                                      />
+                                    )}
+                                  </span>
+                                }
+                              />
+                              <PublishPanel
+                                client={client}
+                                product={p}
+                                badge={badges[p.project_name]}
+                                accountName={accountById.get(p.account_id)?.account_name ?? ""}
+                              />
+                            </>
+                          )}
                           <ArchiveToggle productId={p.id} archived={p.archived} />
                           {count === 0 && (
                             <DeleteButton
@@ -460,8 +488,50 @@ function CredentialsTab({ client }: { client: ClientFull }) {
   }
   const totalSubmissions = client.releases.reduce((n, r) => n + r.apps.length, 0);
 
+  // Shared by every Play Store app; the publisher fills these into Play Console.
+  const playDetails: [string, string | null][] = [
+    ["Privacy policy", client.play_privacy_url],
+    ["Delete account", client.play_delete_account_url],
+    ["Contact email", client.play_contact_email],
+    ["Listing email", client.play_listing_email],
+    ["Phone", client.play_contact_phone],
+    ["Website", client.play_website],
+    ["Default language", client.play_default_language],
+  ];
+
   return (
     <div className="space-y-4">
+      <section className="card overflow-hidden">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-[14px] font-semibold">
+              <StoreIcon platform="play_store" size={14} /> Play Store details
+            </h2>
+            <p className="text-[12px] text-muted-foreground">
+              Shared by every Play app — the publisher fills these into Play Console.
+            </p>
+          </div>
+          <ClientPlayDialog client={client} />
+        </div>
+        <dl className="grid gap-x-6 gap-y-2 px-4 py-3 text-[13px] sm:grid-cols-2">
+          {playDetails.map(([label, value]) => (
+            <div key={label} className="flex min-w-0 items-center gap-2">
+              <dt className="w-28 shrink-0 text-[12px] text-muted-foreground">{label}</dt>
+              <dd className="flex min-w-0 items-center gap-1">
+                {value ? (
+                  <>
+                    <span className="truncate">{value}</span>
+                    <CopyButton value={value} label={`Copy ${label.toLowerCase()}`} />
+                  </>
+                ) : (
+                  <span className="text-muted-foreground/60">Not set</span>
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
       <section className="card overflow-hidden">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div>
