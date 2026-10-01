@@ -6,11 +6,12 @@ import { Modal } from "@/components/Modal";
 import { Spinner } from "@/components/Spinner";
 import { saveApp } from "@/lib/actions";
 import { PLATFORMS, PROJECT_SUGGESTIONS, STATUSES, STATUS_ORDER } from "@/lib/constants";
-import type { App, PublisherAccount, TeamMember } from "@/lib/types";
+import type { App, Keystore, PublisherAccount, TeamMember } from "@/lib/types";
 
 export function AppDialog({
   releaseId,
   accounts,
+  keystores,
   app,
   team,
   defaultAccountId,
@@ -21,6 +22,7 @@ export function AppDialog({
 }: {
   releaseId: string;
   accounts: PublisherAccount[];
+  keystores: Keystore[];
   app?: App;
   team: TeamMember[];
   defaultAccountId?: string;
@@ -34,6 +36,11 @@ export function AppDialog({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
+  function openDialog() {
+    setError(null);
+    setOpen(true);
+  }
+
   function submit(fd: FormData) {
     setError(null);
     start(async () => {
@@ -46,7 +53,7 @@ export function AppDialog({
 
   return (
     <>
-      <button className={className} onClick={() => setOpen(true)}>
+      <button className={className} onClick={openDialog}>
         {trigger}
       </button>
 
@@ -176,7 +183,7 @@ export function AppDialog({
               </div>
             </div>
 
-            <div className="grid grid-cols-[1fr_1fr] gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="label" htmlFor="flutter_version">
                   Flutter version
@@ -190,16 +197,33 @@ export function AppDialog({
                 />
               </div>
               <div>
-                <label className="label" htmlFor="jks">
-                  JKS
+                <label className="label" htmlFor="keystore_id">
+                  Keystore
                 </label>
-                <input
-                  id="jks"
-                  name="jks"
-                  defaultValue={app?.jks ?? ""}
-                  placeholder="N/A"
+                <select
+                  id="keystore_id"
+                  name="keystore_id"
+                  defaultValue={
+                    app
+                      ? (app.keystore_id ?? "")
+                      : keystores.length === 1
+                        ? keystores[0].id
+                        : ""
+                  }
                   className="field"
-                />
+                >
+                  <option value="">None</option>
+                  {keystores.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.file_name ? `${k.name} — ${k.file_name}` : k.name}
+                    </option>
+                  ))}
+                </select>
+                {keystores.length === 0 && (
+                  <p className="mt-1 text-[11px] text-neutral-500">
+                    Add one on the client page to link it here.
+                  </p>
+                )}
               </div>
             </div>
 

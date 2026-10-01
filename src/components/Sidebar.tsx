@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { RELEASE_STATES } from "@/lib/constants";
+import { PLATFORMS, RELEASE_STATES } from "@/lib/constants";
 import { signOut } from "@/lib/actions";
-import type { ReleaseState } from "@/lib/types";
+import type { Platform, ReleaseState } from "@/lib/types";
 
 export type SidebarRelease = {
   id: string;
@@ -13,6 +13,7 @@ export type SidebarRelease = {
   title: string | null;
   assignedTo: string | null;
   appCount: number;
+  liveCount: number;
   state: ReleaseState;
 };
 
@@ -20,6 +21,7 @@ export type SidebarClient = {
   id: string;
   ticket: string;
   name: string;
+  platforms: Platform[];
   releases: SidebarRelease[];
 };
 
@@ -148,25 +150,60 @@ function ReleaseRail({
   activeReleaseId?: string;
   onNavigate: () => void;
 }) {
+  const apps = client.releases.reduce((n, r) => n + r.appCount, 0);
+  const live = client.releases.reduce((n, r) => n + r.liveCount, 0);
+
   return (
     <>
-      <div className="px-3 py-3.5">
+      <div className="px-3 pb-3 pt-3.5">
         <Link
           href="/clients"
           onClick={onNavigate}
-          className="mb-2 inline-flex items-center gap-1.5 text-[12px] font-medium text-neutral-500 hover:text-neutral-900"
+          className="mb-2.5 inline-flex items-center gap-1.5 px-0.5 text-[12px] font-medium text-neutral-500 hover:text-neutral-900"
         >
           ← All clients
         </Link>
+
         <Link
           href={`/clients/${client.id}`}
           onClick={onNavigate}
-          className="block px-0.5"
+          className="group block rounded-lg border border-neutral-200 bg-neutral-50/70 p-3 transition-colors hover:border-neutral-300 hover:bg-neutral-50"
         >
-          <div className="truncate text-[15px] font-semibold text-neutral-900">
-            {client.name}
+          <div className="flex items-center gap-2.5">
+            <span className="grid size-9 shrink-0 place-items-center rounded-md bg-neutral-900 text-[13px] font-semibold text-white">
+              {initials(client.name)}
+            </span>
+            <div className="min-w-0 flex-1 leading-tight">
+              <div className="truncate text-[14px] font-semibold text-neutral-900">
+                {client.name}
+              </div>
+              <div className="mt-0.5 font-mono text-[11px] text-neutral-500">
+                Ticket #{client.ticket}
+              </div>
+            </div>
+            <span className="text-[13px] text-neutral-400 transition-colors group-hover:text-neutral-700">
+              →
+            </span>
           </div>
-          <div className="font-mono text-[11px] text-neutral-400">#{client.ticket}</div>
+
+          <div className="mt-3 grid grid-cols-3 divide-x divide-neutral-200 rounded-md border border-neutral-200 bg-white text-center">
+            <Stat value={client.releases.length} label="Releases" />
+            <Stat value={apps} label="Apps" />
+            <Stat value={live} label="Live" />
+          </div>
+
+          {client.platforms.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-1">
+              {client.platforms.map((p) => (
+                <span
+                  key={p}
+                  className="rounded border border-neutral-200 bg-white px-1.5 py-0.5 text-[11px] font-medium text-neutral-600"
+                >
+                  {PLATFORMS[p].label}
+                </span>
+              ))}
+            </div>
+          )}
         </Link>
       </div>
 
@@ -228,4 +265,23 @@ function ReleaseRail({
       </div>
     </>
   );
+}
+
+function Stat({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="px-1 py-1.5">
+      <div className="text-[14px] font-semibold tabular-nums text-neutral-900">{value}</div>
+      <div className="text-[10px] font-medium uppercase tracking-wide text-neutral-500">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+/** "Anelissa" -> "AN", "Green Valley Foods" -> "GV". */
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
 }

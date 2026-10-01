@@ -6,8 +6,10 @@ import { CopyButton } from "@/components/CopyButton";
 import { ClientDialog } from "@/components/dialogs/ClientDialog";
 import { AccountDialog } from "@/components/dialogs/AccountDialog";
 import { ReleaseDialog } from "@/components/dialogs/ReleaseDialog";
+import { KeystoreDialog } from "@/components/dialogs/KeystoreDialog";
+import { KeystoreDownloadButton } from "@/components/KeystoreDownloadButton";
 import { getClient, activeMembers, getTeam, teamIndex } from "@/lib/queries";
-import { deleteAccount, deleteClient } from "@/lib/actions";
+import { deleteAccount, deleteClient, deleteKeystore } from "@/lib/actions";
 import {
   ACCOUNT_TYPES,
   PLATFORMS,
@@ -37,6 +39,18 @@ export default async function ClientPage({
   const names = teamIndex(roster);
   const totalApps = client.releases.reduce((n, r) => n + r.apps.length, 0);
   const versions = client.releases.map((r) => r.version);
+
+  // Which apps sign with each keystore, by name, across every release.
+  const keystoreUsers = new Map<string, string[]>();
+  for (const r of client.releases) {
+    for (const a of r.apps) {
+      if (!a.keystore_id) continue;
+      const users = keystoreUsers.get(a.keystore_id) ?? [];
+      const label = a.app_name || a.project_name;
+      if (!users.includes(label)) users.push(label);
+      keystoreUsers.set(a.keystore_id, users);
+    }
+  }
 
   const releaseDialog = (
     <ReleaseDialog
@@ -134,6 +148,78 @@ export default async function ClientPage({
                 />
               </li>
             ))}
+          </ul>
+        )}
+      </section>
+
+      {/* keystores — one usually signs every app, so it lives on the client */}
+      <section className="card mb-4 overflow-hidden">
+        <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-2.5">
+          <div>
+            <h2 className="text-[13px] font-semibold text-neutral-900">Keystores</h2>
+            <p className="text-[11px] text-neutral-500">
+              The signing keys this client&apos;s apps use. Edit once, every app picks it up.
+            </p>
+          </div>
+          <KeystoreDialog
+            clientId={client.id}
+            trigger="+ Keystore"
+            className="btn btn-secondary"
+          />
+        </div>
+
+        {client.keystores.length === 0 ? (
+          <p className="px-4 py-8 text-center text-[13px] text-neutral-400">
+            No keystore yet — add one, then link it to apps from the app dialog.
+          </p>
+        ) : (
+          <ul className="divide-y divide-neutral-100">
+            {client.keystores.map((k) => {
+              const users = keystoreUsers.get(k.id) ?? [];
+              return (
+                <li key={k.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
+                  <span className="w-40 shrink-0 truncate text-[13px] font-medium text-neutral-800">
+                    {k.name}
+                  </span>
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    {k.file_path ? (
+                      <>
+                        <span
+                          className="truncate font-mono text-[12px] text-neutral-600"
+                          title={k.file_name ?? ""}
+                        >
+                          {k.file_name}
+                        </span>
+                        <KeystoreDownloadButton keystoreId={k.id} />
+                      </>
+                    ) : (
+                      <span className="text-[12px] text-neutral-300">No file</span>
+                    )}
+                    {k.details && <CopyButton value={k.details} label="Copy JKS details" />}
+                  </span>
+                  <span
+                    className="max-w-[260px] truncate text-[12px] text-neutral-500"
+                    title={users.join(", ")}
+                  >
+                    {users.length ? `Used by ${users.join(", ")}` : "Not linked to any app"}
+                  </span>
+                  <KeystoreDialog
+                    clientId={client.id}
+                    keystore={k}
+                    trigger="Edit"
+                    className="btn btn-ghost px-2 py-1"
+                  />
+                  <DeleteButton
+                    label="✕"
+                    confirmText={`Delete the keystore "${k.name}" and its file? Apps using it will be unlinked.`}
+                    action={async () => {
+                      "use server";
+                      return deleteKeystore(k.id);
+                    }}
+                  />
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

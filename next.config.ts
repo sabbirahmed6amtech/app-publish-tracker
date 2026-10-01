@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Self-contained server in .next/standalone, for handing out a runnable build.
+  output: "standalone",
   experimental: {
     serverActions: { bodySizeLimit: "4mb" },
     // Every page is force-dynamic, and Next's default client cache for dynamic

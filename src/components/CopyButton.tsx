@@ -40,10 +40,12 @@ export function CopyButton({
   value,
   label = "Copy",
   className = "",
+  tone = "light",
 }: {
   value: string;
   label?: string;
   className?: string;
+  tone?: "light" | "dark";
 }) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -76,7 +78,9 @@ export function CopyButton({
                       ? "text-emerald-600"
                       : state === "failed"
                         ? "text-rose-600"
-                        : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                        : tone === "dark"
+                          ? "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+                          : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
                   } ${className}`}
     >
       {copied ? (

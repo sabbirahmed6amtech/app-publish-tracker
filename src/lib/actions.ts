@@ -20,6 +20,9 @@ function refresh() {
   revalidatePath("/", "layout");
 }
 
+/** Private storage bucket holding keystore files. */
+const JKS_BUCKET = "jks";
+
 // ------------------------------------------------------------------ clients
 
 export async function saveClient(fd: FormData): Promise<ActionResult> {
@@ -49,8 +52,15 @@ export async function saveClient(fd: FormData): Promise<ActionResult> {
 
 export async function deleteClient(id: string): Promise<ActionResult> {
   const supabase = await db();
+  // Keystore rows cascade with the client; their files have to go by hand.
+  const { data: keystores } = await supabase
+    .from("keystores")
+    .select("file_path")
+    .eq("client_id", id);
   const { error } = await supabase.from("clients").delete().eq("id", id);
   if (error) return { ok: false, error: error.message };
+  const paths = (keystores ?? []).flatMap((k) => (k.file_path ? [k.file_path] : []));
+  if (paths.length) await supabase.storage.from(JKS_BUCKET).remove(paths);
   refresh();
   redirect("/clients");
 }
@@ -166,7 +176,7 @@ export async function copyAppsFromRelease(
 
   const { data: source, error: readError } = await supabase
     .from("apps")
-    .select("account_id, project_name, app_name, jks, sort_order")
+    .select("account_id, project_name, app_name, keystore_id, jks, sort_order")
     .eq("release_id", fromReleaseId);
 
   if (readError) return { ok: false, error: readError.message };
@@ -194,6 +204,106 @@ export async function copyAppsFromRelease(
   return { ok: true };
 }
 
+// ---------------------------------------------------------------- keystores
+
+export async function saveKeystore(fd: FormData): Promise<ActionResult> {
+  const id = str(fd, "id");
+  const client_id = str(fd, "client_id");
+  const name = str(fd, "name");
+  if (!name) return { ok: false, error: "Give the keystore a name." };
+
+  const file = fd.get("file");
+  const upload = file instanceof File && file.size > 0 ? file : null;
+  const removeFile = str(fd, "file_remove") === "1";
+
+  const supabase = await db();
+  const payload = {
+    client_id,
+    name,
+    details: nullable(fd, "details"),
+    note: nullable(fd, "note"),
+  };
+
+  let previousPath: string | null = null;
+  if (id && (upload || removeFile)) {
+    const { data } = await supabase
+      .from("keystores")
+      .select("file_path")
+      .eq("id", id)
+      .maybeSingle();
+    previousPath = data?.file_path ?? null;
+  }
+
+  const { data: saved, error } = id
+    ? await supabase.from("keystores").update(payload).eq("id", id).select("id").single()
+    : await supabase.from("keystores").insert(payload).select("id").single();
+
+  if (error) return { ok: false, error: error.message };
+
+  if (upload) {
+    const safeName = upload.name.replace(/[^\w.\-]+/g, "_");
+    const path = `keystores/${saved.id}/${Date.now()}-${safeName}`;
+    const { error: uploadError } = await supabase.storage
+      .from(JKS_BUCKET)
+      .upload(path, upload, { contentType: "application/octet-stream" });
+    if (uploadError) {
+      refresh();
+      return {
+        ok: false,
+        error: `Keystore saved, but the file upload failed: ${uploadError.message}`,
+      };
+    }
+    await supabase
+      .from("keystores")
+      .update({ file_path: path, file_name: upload.name })
+      .eq("id", saved.id);
+    if (previousPath) await supabase.storage.from(JKS_BUCKET).remove([previousPath]);
+  } else if (removeFile && previousPath) {
+    await supabase
+      .from("keystores")
+      .update({ file_path: null, file_name: null })
+      .eq("id", saved.id);
+    await supabase.storage.from(JKS_BUCKET).remove([previousPath]);
+  }
+
+  refresh();
+  return { ok: true, id: saved.id };
+}
+
+/** Apps that used it are unlinked, not deleted. */
+export async function deleteKeystore(id: string): Promise<ActionResult> {
+  const supabase = await db();
+  const { data } = await supabase
+    .from("keystores")
+    .select("file_path")
+    .eq("id", id)
+    .maybeSingle();
+  const { error } = await supabase.from("keystores").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  if (data?.file_path) await supabase.storage.from(JKS_BUCKET).remove([data.file_path]);
+  refresh();
+  return { ok: true };
+}
+
+/** Short-lived link that downloads the keystore file under its original name. */
+export async function getKeystoreDownloadUrl(
+  keystoreId: string,
+): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const supabase = await db();
+  const { data } = await supabase
+    .from("keystores")
+    .select("file_path, file_name")
+    .eq("id", keystoreId)
+    .maybeSingle();
+  if (!data?.file_path) return { ok: false, error: "This keystore has no file." };
+
+  const { data: signed, error } = await supabase.storage
+    .from(JKS_BUCKET)
+    .createSignedUrl(data.file_path, 60, { download: data.file_name ?? true });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, url: signed.signedUrl };
+}
+
 // --------------------------------------------------------------------- apps
 
 export async function saveApp(fd: FormData): Promise<ActionResult> {
@@ -214,7 +324,7 @@ export async function saveApp(fd: FormData): Promise<ActionResult> {
     assigned_to: nullable(fd, "assigned_to"),
     build_version: nullable(fd, "build_version"),
     flutter_version: nullable(fd, "flutter_version"),
-    jks: nullable(fd, "jks"),
+    keystore_id: nullable(fd, "keystore_id"),
     store_url: nullable(fd, "store_url"),
     note: nullable(fd, "note"),
     sort_order: Number(str(fd, "sort_order") || 0),

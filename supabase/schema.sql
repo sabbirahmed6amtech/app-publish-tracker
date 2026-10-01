@@ -93,6 +93,22 @@ create table releases (
 create index releases_client_idx   on releases (client_id, started_on desc);
 create index releases_assigned_idx on releases (assigned_to);
 
+-- The signing keystore. One usually signs every app a client ships (user,
+-- vendor, delivery …), so it lives on the client and apps point at it.
+create table keystores (
+  id         uuid primary key default gen_random_uuid(),
+  client_id  uuid not null references clients (id) on delete cascade,
+  name       text not null default 'Keystore',
+  details    text,                      -- key.properties / alias / passwords
+  file_path  text,                      -- object in the private 'jks' bucket
+  file_name  text,
+  note       text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index keystores_client_idx on keystores (client_id);
+
 -- What was actually submitted in a release, and to which store account.
 create table apps (
   id                uuid primary key default gen_random_uuid(),
@@ -104,7 +120,10 @@ create table apps (
   assigned_to       uuid references team_members (id) on delete set null,
   build_version     text,                       -- 1.0.0+4
   flutter_version   text,
-  jks               text,
+  keystore_id       uuid references keystores (id) on delete set null,
+  jks               text,                       -- legacy, superseded by keystore_id
+  jks_file_path     text,                       -- legacy
+  jks_file_name     text,                       -- legacy
   store_url         text,
   note              text,
   sort_order        integer not null default 0,
@@ -117,6 +136,7 @@ create index apps_release_idx on apps (release_id);
 create index apps_account_idx on apps (account_id);
 create index apps_status_idx   on apps (status);
 create index apps_assigned_idx on apps (assigned_to);
+create index apps_keystore_idx on apps (keystore_id);
 
 create table app_events (
   id          uuid primary key default gen_random_uuid(),
@@ -148,6 +168,8 @@ create trigger publisher_accounts_touch before update on publisher_accounts
 create trigger releases_touch           before update on releases
   for each row execute function touch_updated_at();
 create trigger apps_touch               before update on apps
+  for each row execute function touch_updated_at();
+create trigger keystores_touch          before update on keystores
   for each row execute function touch_updated_at();
 
 -- Record status transitions so we can show how long something has sat.
@@ -236,12 +258,23 @@ alter table publisher_accounts enable row level security;
 alter table releases           enable row level security;
 alter table apps               enable row level security;
 alter table app_events         enable row level security;
+alter table keystores          enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['clients','team_members','publisher_accounts','releases','apps','app_events'] loop
+  foreach t in array array['clients','team_members','publisher_accounts','releases','apps','app_events','keystores'] loop
     execute format(
       'create policy team_all on %I for all to authenticated using (true) with check (true)', t);
   end loop;
 end $$;
+
+-- ---------------------------------------------------------- keystores ----
+insert into storage.buckets (id, name, public)
+values ('jks', 'jks', false)
+on conflict (id) do nothing;
+
+create policy jks_team_all on storage.objects
+  for all to authenticated
+  using (bucket_id = 'jks')
+  with check (bucket_id = 'jks');

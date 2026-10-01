@@ -8,6 +8,7 @@ import type {
   AppStatus,
   Client,
   ClientFull,
+  Keystore,
   Platform,
   PublisherAccount,
   Release,
@@ -15,12 +16,13 @@ import type {
   TeamMember,
 } from "@/lib/types";
 
-const CLIENT_TREE = "*, publisher_accounts(*), releases(*, apps(*))";
+const CLIENT_TREE = "*, publisher_accounts(*), keystores(*), releases(*, apps(*))";
 
 function sortTree(c: ClientFull): ClientFull {
   c.publisher_accounts = (c.publisher_accounts ?? []).sort((a, b) =>
     a.platform.localeCompare(b.platform),
   );
+  c.keystores = (c.keystores ?? []).sort((a, b) => a.name.localeCompare(b.name));
   // Newest release first — that is the one being worked on.
   c.releases = (c.releases ?? []).sort(
     (a, b) => b.started_on.localeCompare(a.started_on) || b.version.localeCompare(a.version),
@@ -82,6 +84,7 @@ export type ReleaseDetail = {
   release: ReleaseWithApps;
   client: Client;
   accounts: PublisherAccount[];
+  keystores: Keystore[];
   siblings: Release[];
 };
 
@@ -91,7 +94,7 @@ export const getRelease = cache(async function getRelease(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("releases")
-    .select("*, apps(*), clients(*, publisher_accounts(*), releases(*))")
+    .select("*, apps(*), clients(*, publisher_accounts(*), keystores(*), releases(*))")
     .eq("id", releaseId)
     .maybeSingle();
 
@@ -102,6 +105,7 @@ export const getRelease = cache(async function getRelease(
     apps: App[];
     clients: Client & {
       publisher_accounts: PublisherAccount[];
+      keystores: Keystore[];
       releases: Release[];
     };
   };
@@ -119,6 +123,7 @@ export const getRelease = cache(async function getRelease(
     accounts: (clients.publisher_accounts ?? []).sort((a, b) =>
       a.platform.localeCompare(b.platform),
     ),
+    keystores: (clients.keystores ?? []).sort((a, b) => a.name.localeCompare(b.name)),
     siblings: (clients.releases ?? []).sort(
       (a, b) => b.started_on.localeCompare(a.started_on) || b.version.localeCompare(a.version),
     ),

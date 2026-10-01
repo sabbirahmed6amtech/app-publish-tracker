@@ -27,6 +27,23 @@ body {
   border-radius: 3px;
 }
 
+/* Side drawers slide in from the right. */
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+.drawer-in {
+  animation: drawer-in 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer-in {
+    animation: none;
+  }
+}
+
 /* Skeletons: a quiet base with a light sweep across it. */
 @keyframes skeleton-sweep {
   100% {

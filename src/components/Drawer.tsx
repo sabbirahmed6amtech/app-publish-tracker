@@ -1,21 +1,21 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
-export function Modal({
+/** A panel that slides in from the right; closes on Escape or a backdrop click. */
+export function Drawer({
   open,
   onClose,
   title,
   subtitle,
   children,
-  width = "max-w-xl",
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   children: ReactNode;
-  width?: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -30,23 +30,24 @@ export function Modal({
 
   if (!open) return null;
 
-  return (
-    <div data-modal className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8">
+  // Portalled so it isn't trapped inside the table row that opens it.
+  return createPortal(
+    <div className="fixed inset-0 z-50">
       <div
-        className="fixed inset-0 bg-neutral-900/25 backdrop-blur-[1px]"
+        className="absolute inset-0 bg-neutral-900/25 backdrop-blur-[1px]"
         onClick={onClose}
         aria-hidden
       />
-      <div
+      <aside
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`card relative z-10 w-full ${width} my-auto`}
+        className="drawer-in absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-neutral-200 bg-white shadow-xl"
       >
-        <div className="flex items-start justify-between border-b border-neutral-200 px-5 py-3.5">
-          <div>
-            <h2 className="text-[15px] font-semibold text-neutral-900">{title}</h2>
-            {subtitle && <p className="mt-0.5 text-[12px] text-neutral-500">{subtitle}</p>}
+        <div className="flex items-start justify-between gap-3 border-b border-neutral-200 px-5 py-3.5">
+          <div className="min-w-0">
+            <h2 className="truncate text-[15px] font-semibold text-neutral-900">{title}</h2>
+            {subtitle && <div className="mt-0.5 text-[12px] text-neutral-500">{subtitle}</div>}
           </div>
           <button
             type="button"
@@ -57,8 +58,9 @@ export function Modal({
             ×
           </button>
         </div>
-        {children}
-      </div>
-    </div>
+        <div className="flex-1 overflow-y-auto">{children}</div>
+      </aside>
+    </div>,
+    document.body,
   );
 }

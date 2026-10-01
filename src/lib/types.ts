@@ -40,6 +40,19 @@ export type PublisherAccount = {
   updated_at: string;
 };
 
+/** The signing keystore a client's apps share. */
+export type Keystore = {
+  id: string;
+  client_id: string;
+  name: string;
+  details: string | null;
+  file_path: string | null;
+  file_name: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 /** One publication round for one client. */
 export type Release = {
   id: string;
@@ -64,6 +77,8 @@ export type App = {
   assigned_to: string | null;
   build_version: string | null;
   flutter_version: string | null;
+  keystore_id: string | null;
+  /** Legacy — superseded by keystore_id. */
   jks: string | null;
   store_url: string | null;
   note: string | null;
@@ -88,6 +103,7 @@ export type ReleaseWithApps = Release & { apps: App[] };
 
 export type ClientFull = Client & {
   publisher_accounts: PublisherAccount[];
+  keystores: Keystore[];
   releases: ReleaseWithApps[];
 };
 

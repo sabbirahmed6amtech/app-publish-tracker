@@ -7,6 +7,7 @@ import { CopyReportButton } from "@/components/CopyReportButton";
 import { buildReport } from "@/lib/report";
 import { ReleaseDialog } from "@/components/dialogs/ReleaseDialog";
 import { AppDialog } from "@/components/dialogs/AppDialog";
+import { AppPreviewRow } from "@/components/AppPreviewRow";
 import { getActivityForApps, getRelease, activeMembers, getTeam, teamIndex } from "@/lib/queries";
 import { deleteApp, deleteRelease } from "@/lib/actions";
 import {
@@ -19,7 +20,7 @@ import {
   isStale,
   releaseState,
 } from "@/lib/constants";
-import type { App, PublisherAccount, TeamMember } from "@/lib/types";
+import type { App, Keystore, PublisherAccount, TeamMember } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export default async function ReleasePage({
   const [detail, roster] = await Promise.all([getRelease(id), getTeam()]);
   if (!detail) notFound();
 
-  const { release, client, accounts, siblings } = detail;
+  const { release, client, accounts, keystores, siblings } = detail;
   const apps = release.apps;
   const live = apps.filter((a) => a.status === "production").length;
   const state = releaseState(apps);
@@ -120,6 +121,7 @@ export default async function ReleasePage({
             <AppDialog
               releaseId={release.id}
               accounts={accounts}
+              keystores={keystores}
               team={team}
               defaultAssignee={release.assigned_to}
               nextSortOrder={apps.length}
@@ -183,6 +185,7 @@ export default async function ReleasePage({
             apps={apps.filter((a) => a.account_id === account.id)}
             releaseId={release.id}
             accounts={accounts}
+            keystores={keystores}
             team={team}
             names={names}
             defaultAssignee={release.assigned_to}
@@ -265,6 +268,7 @@ function AccountSection({
   apps,
   releaseId,
   accounts,
+  keystores,
   team,
   names,
   defaultAssignee,
@@ -273,11 +277,13 @@ function AccountSection({
   apps: App[];
   releaseId: string;
   accounts: PublisherAccount[];
+  keystores: Keystore[];
   team: TeamMember[];
   names: Map<string, string>;
   defaultAssignee: string | null;
 }) {
   const live = apps.filter((a) => a.status === "production").length;
+  const keystoreById = new Map(keystores.map((k) => [k.id, k]));
 
   return (
     <section className="card overflow-hidden">
@@ -304,6 +310,7 @@ function AccountSection({
         <AppDialog
           releaseId={releaseId}
           accounts={accounts}
+          keystores={keystores}
           team={team}
           defaultAccountId={account.id}
           defaultAssignee={defaultAssignee}
@@ -329,8 +336,14 @@ function AccountSection({
           </thead>
           <tbody>
             {apps.map((app) => (
-              <tr
+              <AppPreviewRow
                 key={app.id}
+                app={app}
+                accountLabel={`${PLATFORMS[account.platform].label} — ${
+                  account.account_name || "unnamed account"
+                }`}
+                assigneeName={(app.assigned_to && names.get(app.assigned_to)) || null}
+                keystore={(app.keystore_id && keystoreById.get(app.keystore_id)) || null}
                 className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50/70"
               >
                 <td className="td whitespace-nowrap font-medium text-neutral-800">
@@ -382,6 +395,7 @@ function AccountSection({
                     <AppDialog
                       releaseId={releaseId}
                       accounts={accounts}
+                      keystores={keystores}
                       app={app}
                       team={team}
                       defaultAssignee={defaultAssignee}
@@ -398,7 +412,7 @@ function AccountSection({
                     />
                   </div>
                 </td>
-              </tr>
+              </AppPreviewRow>
             ))}
           </tbody>
         </table>

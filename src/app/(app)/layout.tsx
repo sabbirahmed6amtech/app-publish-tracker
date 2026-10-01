@@ -25,12 +25,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       id: c.id,
       ticket: c.ticket,
       name: c.name,
+      platforms: [...new Set(c.publisher_accounts.map((a) => a.platform))],
       releases: c.releases.map((r) => ({
         id: r.id,
         version: r.version,
         title: r.title,
         assignedTo: (r.assigned_to && names.get(r.assigned_to)) || null,
         appCount: r.apps.length,
+        liveCount: r.apps.filter((a) => a.status === "production").length,
         state: releaseState(r.apps),
       })),
     }));
