@@ -4,6 +4,7 @@ import { CopyReportButton } from "@/components/CopyReportButton";
 import { AppPreviewRow } from "@/components/AppPreviewRow";
 import { imagesOf } from "@/lib/appImages";
 import { DrawerPublishButton } from "@/components/PublishPanel";
+import { isFirstPublish } from "@/lib/publish";
 import { InlineAssignee, InlineText } from "@/components/InlineEdit";
 import { ReleaseDialog } from "@/components/dialogs/ReleaseDialog";
 import { SubmissionDialog } from "@/components/dialogs/SubmissionDialog";
@@ -45,6 +46,7 @@ export function ReleaseView({
   siblings,
   roster,
   lines,
+  everLive = [],
 }: {
   release: ReleaseWithApps;
   /** The whole client: the drawer's Publish needs its store details. */
@@ -55,6 +57,8 @@ export function ReleaseView({
   siblings: Release[];
   roster: TeamMember[];
   lines: ProductLine[];
+  /** Products already live somewhere; they're updated, not published. */
+  everLive?: string[];
 }) {
   const apps = release.apps;
   const badges = lineBadges(lines);
@@ -220,6 +224,8 @@ export function ReleaseView({
                             platform={platform}
                             accountName={account?.account_name ?? ""}
                             badge={badges[app.project_name]}
+                            mode={isFirstPublish(product, new Set(everLive)) ? "publish" : "update"}
+                            version={release.version}
                           />
                         );
                       })()}

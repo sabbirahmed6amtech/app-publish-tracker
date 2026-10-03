@@ -10,6 +10,7 @@ import {
   PartyPopperIcon,
   PauseIcon,
   PuzzleIcon,
+  RefreshCwIcon,
   RocketIcon,
   ShieldCheckIcon,
   TerminalIcon,
@@ -37,7 +38,9 @@ import {
   publishChecksIos,
   publishData,
   publishDataIos,
+  updateChecks,
   type PublishCheck,
+  type PublishMode,
 } from "@/lib/publish";
 import type { Client, LineBadge, Platform, Product } from "@/lib/types";
 
@@ -94,6 +97,28 @@ const STORE = {
   },
 } as const;
 
+// An update to an app that's already live: far fewer steps. The build and any
+// release notes stay with the person — the run pauses for them.
+const UPDATE = {
+  play_store: {
+    steps: ["Find app", "New release", "Review release"],
+    footnote:
+      "The run pauses for you to upload the new AAB (and add release notes if you like). Starting the rollout stays with you.",
+    next: "Next, by hand: check the review page, save, and start the rollout to Production.",
+  },
+  app_store: {
+    steps: ["Find app", "New version", "Save"],
+    footnote:
+      "The run pauses for you to pick the build (and add What's New if you like). Submitting for review stays with you.",
+    next: "Next, by hand: review the version page and click Add for Review.",
+  },
+} as const;
+
+const CONSOLE_URL = {
+  play_store: "https://play.google.com/console",
+  app_store: "https://appstoreconnect.apple.com/apps",
+} as const;
+
 /**
  * Hands a Play Store app to the "Play Console Publisher" extension: it opens
  * Play Console in a new tab and fills the 13 setup sections, while this panel
@@ -105,7 +130,9 @@ export function PublishPanel({
   platform = "play_store",
   accountName,
   badge,
-  triggerLabel = "Publish",
+  mode = "publish",
+  version,
+  triggerLabel,
   triggerClassName = "btn btn-ghost h-7 gap-1 px-2 text-[12px]",
 }: {
   client: Client;
@@ -116,11 +143,17 @@ export function PublishPanel({
   accountName: string;
   /** The app's product-line logo, for the header. */
   badge?: LineBadge;
+  /** A first publish, or an update to an app that's already live. */
+  mode?: PublishMode;
+  /** The release's version — the App Store version an update creates. */
+  version?: string;
   /** The button that opens the popup — a small one in tables, a big one in the drawer. */
   triggerLabel?: string;
   triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const update = mode === "update";
+  const Icon = update ? RefreshCwIcon : RocketIcon;
 
   return (
     <>
@@ -128,10 +161,14 @@ export function PublishPanel({
         type="button"
         className={triggerClassName}
         onClick={() => setOpen(true)}
-        title={`Fill ${STORE[platform].console} for this app`}
+        title={
+          update
+            ? `Start a new release of this app in ${STORE[platform].console}`
+            : `Fill ${STORE[platform].console} for this app`
+        }
       >
-        <RocketIcon className="size-3.5" />
-        {triggerLabel}
+        <Icon className="size-3.5" />
+        {triggerLabel ?? (update ? "Update" : "Publish")}
       </button>
       {open && (
         // A wide popup rather than a side drawer: details on the left, the
@@ -142,7 +179,7 @@ export function PublishPanel({
             className="max-h-[calc(100dvh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-[min(1240px,calc(100vw-2rem))]"
           >
             <DialogTitle className="sr-only">
-              Publish {product.app_name || product.project_name}
+              {update ? "Update" : "Publish"} {product.app_name || product.project_name}
             </DialogTitle>
             <DialogDescription className="sr-only">
               Fill {STORE[platform].console} for this app
@@ -153,6 +190,8 @@ export function PublishPanel({
               platform={platform}
               accountName={accountName}
               badge={badge}
+              mode={mode}
+              version={version}
             />
           </DialogContent>
         </Dialog>
@@ -169,23 +208,32 @@ function PanelBody({
   platform,
   accountName,
   badge,
+  mode,
+  version,
 }: {
   client: Client;
   product: Product;
   platform: Platform;
   accountName: string;
   badge?: LineBadge;
+  mode: PublishMode;
+  version?: string;
 }) {
   const store = STORE[platform];
+  const update = mode === "update";
+  const steps = update ? UPDATE[platform].steps : store.steps;
   const bridge = usePublisherBridge();
   const [confirmed, setConfirmed] = useState(false);
   const [launching, setLaunching] = useState(false);
 
   const ios = platform === "app_store";
-  const data = ios ? publishDataIos(client, product) : publishData(client, product);
-  const checks = ios
-    ? publishChecksIos(data as ReturnType<typeof publishDataIos>)
-    : publishChecks(data as ReturnType<typeof publishData>);
+  const base = ios ? publishDataIos(client, product) : publishData(client, product);
+  const data = update ? { ...base, mode, version: version ?? "" } : base;
+  const checks = update
+    ? updateChecks(data, platform)
+    : ios
+      ? publishChecksIos(data as ReturnType<typeof publishDataIos>)
+      : publishChecks(data as ReturnType<typeof publishData>);
   const appId = ios
     ? (data as ReturnType<typeof publishDataIos>).bundleId
     : (data as ReturnType<typeof publishData>).packageName;
@@ -212,7 +260,7 @@ function PanelBody({
       setLaunching(false);
       toast.error(res.error ?? "Couldn't start the run.");
     } else {
-      toast.success("Play Console is opening in a new tab");
+      toast.success(`${store.console} is opening in a new tab`);
       setTimeout(() => setLaunching(false), 800);
     }
   }
@@ -222,7 +270,14 @@ function PanelBody({
 
   return (
     <div className="flex max-h-[calc(100dvh-2rem)] flex-col">
-      <Hero product={product} platform={platform} badge={badge} stage={stage} />
+      <Hero
+        product={product}
+        platform={platform}
+        badge={badge}
+        stage={stage}
+        update={update}
+        version={version}
+      />
 
       <div className="grid min-h-0 flex-1 md:grid-cols-[1fr_340px] xl:grid-cols-[1fr_380px]">
         <div className="min-h-0 space-y-4 overflow-y-auto p-5">
@@ -235,6 +290,10 @@ function PanelBody({
           {ours && run ? (
             <RunSummary
               run={run}
+              consoleName={store.console}
+              consoleUrl={CONSOLE_URL[platform]}
+              next={update ? UPDATE[platform].next : undefined}
+              noun={update ? "steps" : "sections"}
               onContinue={() => bridge.send("CONTINUE")}
               onStop={() => bridge.send("STOP")}
               onReset={() => bridge.send("RESET")}
@@ -275,13 +334,16 @@ function PanelBody({
                     disabled={!canStart || launching}
                     launching={launching}
                     onClick={start}
+                    label={`Open ${store.console} and start${update ? " the update" : ""}`}
                   />
                   <p className="text-center text-[12px] text-muted-foreground">
                     {blocking.length > 0
                       ? `Add the ${blocking.map((b) => b.label.toLowerCase()).join(" and ")} to continue.`
                       : !confirmed
                         ? `Confirm the ${store.idLabel.toLowerCase()} to continue.`
-                        : `${store.console} opens in a new tab and fills ${store.steps.length} sections.`}
+                        : update
+                          ? `${store.console} opens in a new tab and runs ${steps.length} steps, pausing for the build.`
+                          : `${store.console} opens in a new tab and fills ${steps.length} sections.`}
                   </p>
                 </div>
               </div>
@@ -294,10 +356,11 @@ function PanelBody({
             steps={
               ours && run
                 ? run.steps
-                : store.steps.map((name) => ({ name, status: "pending" as const }))
+                : steps.map((name) => ({ name, status: "pending" as const }))
             }
             live={!!ours}
-            footnote={store.footnote}
+            footnote={update ? UPDATE[platform].footnote : store.footnote}
+            noun={update ? "steps" : "sections"}
           />
         </aside>
       </div>
@@ -311,7 +374,9 @@ export function DrawerPublishButton(props: Omit<Parameters<typeof PublishPanel>[
   return (
     <PublishPanel
       {...props}
-      triggerLabel={`Publish to ${STORE[platform].store}`}
+      triggerLabel={
+        props.mode === "update" ? `Update in ${STORE[platform].store}` : `Publish to ${STORE[platform].store}`
+      }
       triggerClassName="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl text-[14px] font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md [background:linear-gradient(135deg,var(--st-production),color-mix(in_oklch,var(--st-production)_55%,var(--st-ongoing)))]"
     />
   );
@@ -326,11 +391,15 @@ function Hero({
   platform,
   badge,
   stage,
+  update,
+  version,
 }: {
   product: Product;
   platform: Platform;
   badge?: LineBadge;
   stage: number;
+  update: boolean;
+  version?: string;
 }) {
   return (
     <header className="relative overflow-hidden border-b px-5 pb-4 pt-5">
@@ -352,7 +421,8 @@ function Hero({
         </div>
         <div className="min-w-0">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Publish to {STORE[platform].store}
+            {update ? "Update in" : "Publish to"} {STORE[platform].store}
+            {update && version ? ` · version ${version}` : ""}
           </p>
           <h2 className="truncate text-[18px] font-semibold leading-tight">
             {product.app_name || product.project_name}
@@ -615,10 +685,12 @@ function LaunchButton({
   disabled,
   launching,
   onClick,
+  label,
 }: {
   disabled: boolean;
   launching: boolean;
   onClick: () => void;
+  label: string;
 }) {
   return (
     <button
@@ -638,7 +710,7 @@ function LaunchButton({
           launching ? "pub-launch" : "group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
         }`}
       />
-      {launching ? "Launching…" : "Open Play Console and start"}
+      {launching ? "Launching…" : label}
     </button>
   );
 }
@@ -647,11 +719,20 @@ function LaunchButton({
 
 function RunSummary({
   run,
+  consoleName,
+  consoleUrl,
+  next,
+  noun,
   onContinue,
   onStop,
   onReset,
 }: {
   run: PublisherState;
+  consoleName: string;
+  consoleUrl: string;
+  /** What's left to do by hand once the run is done (the default is a first publish's). */
+  next?: string;
+  noun: string;
   onContinue: () => void;
   onStop: () => void;
   onReset: () => void;
@@ -685,17 +766,16 @@ function RunSummary({
             <h3 className="flex items-center gap-2 text-[15px] font-semibold">
               {allGood ? (
                 <>
-                  <PartyPopperIcon className="size-4 text-good" /> All {steps.length} sections
-                  filled
+                  <PartyPopperIcon className="size-4 text-good" /> All {steps.length} {noun} done
                 </>
               ) : finished ? (
                 `Finished — ${failed} need${failed === 1 ? "s" : ""} you`
               ) : phase === "paused" ? (
                 "Waiting for you"
               ) : phase === "starting" ? (
-                "Opening Play Console…"
+                `Opening ${consoleName}…`
               ) : (
-                "Filling Play Console…"
+                `Working in ${consoleName}…`
               )}
             </h3>
             <p className="text-[12px] tabular-nums text-muted-foreground">
@@ -716,7 +796,7 @@ function RunSummary({
             <PauseIcon className="size-4 text-warn" /> {pauseMessage || "The run is paused."}
           </p>
           <p className="mt-1 text-[12px] text-muted-foreground">
-            Sort it out in the Play Console tab, then continue.
+            Do it in the {consoleName} tab, then continue.
           </p>
           <button type="button" className="btn btn-primary mt-3 h-8" onClick={onContinue}>
             Continue
@@ -757,21 +837,16 @@ function RunSummary({
       {finished && (
         <div className="tracker-rise space-y-2">
           <div className="flex flex-wrap gap-2">
-            <a
-              href="https://play.google.com/console"
-              target="_blank"
-              rel="noreferrer"
-              className="btn btn-primary h-9"
-            >
-              Open Play Console <ExternalLinkIcon className="size-3.5" />
+            <a href={consoleUrl} target="_blank" rel="noreferrer" className="btn btn-primary h-9">
+              Open {consoleName} <ExternalLinkIcon className="size-3.5" />
             </a>
             <button type="button" className="btn btn-ghost h-9" onClick={onReset}>
               Clear run
             </button>
           </div>
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Next, by hand: review every section, upload the AAB under Release → Production (or
-            Internal testing first), add release notes, and submit for review.
+            {next ??
+              "Next, by hand: review every section, upload the AAB under Release → Production (or Internal testing first), add release notes, and submit for review."}
           </p>
         </div>
       )}
@@ -784,16 +859,18 @@ function Timeline({
   steps,
   live,
   footnote,
+  noun = "sections",
 }: {
   steps: PublisherStep[];
   live: boolean;
   footnote: string;
+  noun?: string;
 }) {
   return (
     <section>
       <div className="mb-3 flex items-baseline justify-between">
         <h3 className="text-[13px] font-semibold">
-          {live ? "Progress" : `What gets filled · ${steps.length} sections`}
+          {live ? "Progress" : `${noun === "steps" ? "What it does" : "What gets filled"} · ${steps.length} ${noun}`}
         </h3>
         {!live && (
           <span className="text-[11px] text-muted-foreground">in this order</span>

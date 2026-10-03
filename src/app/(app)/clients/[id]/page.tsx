@@ -23,6 +23,8 @@ import { PublishPanel } from "@/components/PublishPanel";
 import { IntakeLinkButton } from "@/components/IntakeLinkButton";
 import {
   publishChecks,
+  everLiveProducts,
+  isFirstPublish,
   publishChecksIos,
   publishData,
   publishDataIos,
@@ -220,6 +222,7 @@ function OverviewTab({
       siblings={client.releases}
       roster={roster}
       lines={lines}
+      everLive={[...everLiveProducts(client.releases.flatMap((r) => r.apps))]}
     />
   );
 }
@@ -236,6 +239,7 @@ function AppsTab({
   const badges = lineBadges(lines);
   const accountById = new Map(client.publisher_accounts.map((a) => [a.id, a]));
   const keystoreById = new Map(client.keystores.map((k) => [k.id, k]));
+  const everLive = everLiveProducts(client.releases.flatMap((r) => r.apps));
 
   // The latest submission of each app, to show where it stands right now.
   const latest = new Map<string, App>();
@@ -409,12 +413,18 @@ function AppsTab({
                                   </span>
                                 }
                               />
+                              {/* A first release creates the app; later ones update it. */}
                               <PublishPanel
                                 client={client}
                                 product={p}
                                 platform={group.platform}
                                 badge={badges[p.project_name]}
                                 accountName={accountById.get(p.account_id)?.account_name ?? ""}
+                                mode={isFirstPublish(p, everLive) ? "publish" : "update"}
+                                version={
+                                  client.releases.find((r) => r.id === latest.get(p.id)?.release_id)
+                                    ?.version
+                                }
                               />
                             </>
                           )}

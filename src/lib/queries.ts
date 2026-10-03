@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { STATUS_ORDER } from "@/lib/constants";
+import { everLiveProducts } from "@/lib/publish";
 import type {
   App,
   AppEvent,
@@ -100,6 +101,8 @@ export type ReleaseDetail = {
   keystores: Keystore[];
   products: Product[];
   siblings: Release[];
+  /** Products that have been live in any of this client's releases. */
+  everLive: string[];
 };
 
 export const getRelease = cache(async function getRelease(
@@ -109,7 +112,7 @@ export const getRelease = cache(async function getRelease(
   const { data, error } = await supabase
     .from("releases")
     .select(
-      "*, apps(*), clients(*, publisher_accounts(*), keystores(*), products(*), releases(*))",
+      "*, apps(*), clients(*, publisher_accounts(*), keystores(*), products(*), releases(*, apps(product_id, status)))",
     )
     .eq("id", releaseId)
     .maybeSingle();
@@ -123,11 +126,12 @@ export const getRelease = cache(async function getRelease(
       publisher_accounts: PublisherAccount[];
       keystores: Keystore[];
       products: Product[];
-      releases: Release[];
+      releases: (Release & { apps?: { product_id: string; status: string }[] })[];
     };
   };
 
   const { clients, apps, ...release } = row;
+  const everLive = everLiveProducts((clients.releases ?? []).flatMap((r) => r.apps ?? []));
 
   return {
     release: {
@@ -142,7 +146,8 @@ export const getRelease = cache(async function getRelease(
     ),
     keystores: (clients.keystores ?? []).sort((a, b) => a.name.localeCompare(b.name)),
     products: sortProducts(clients.products ?? []),
-    siblings: (clients.releases ?? []).sort(
+    everLive: [...everLive],
+    siblings: (clients.releases ?? []).map(({ apps: _apps, ...r }) => r).sort(
       (a, b) => b.started_on.localeCompare(a.started_on) || b.version.localeCompare(a.version),
     ),
   };

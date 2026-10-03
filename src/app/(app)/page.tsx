@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBoard } from "@/components/StatusBoard";
 import { imagesOf, type AppImages } from "@/lib/appImages";
+import { everLiveProducts, isFirstPublish } from "@/lib/publish";
 import {
   activeMembers,
   flatten,
@@ -41,9 +42,14 @@ export default async function MyWorkPage() {
           clients.flatMap((c) => c.products).map((p) => [p.id, imagesOf(p) as AppImages]),
         )}
         publishing={Object.fromEntries(
-          clients.flatMap(({ products, releases, keystores, publisher_accounts, ...client }) =>
-            products.map((product) => [product.id, { client, product }]),
-          ),
+          clients.flatMap(({ products, releases, keystores, publisher_accounts, ...client }) => {
+            // An app's first release is published; later ones update it.
+            const everLive = everLiveProducts(releases.flatMap((r) => r.apps));
+            return products.map((product) => [
+              product.id,
+              { client, product, update: !isFirstPublish(product, everLive) },
+            ]);
+          }),
         )}
       />
     </>
