@@ -7,6 +7,7 @@ import { ChevronRightIcon, ExternalLinkIcon, MoreHorizontalIcon, SearchIcon } fr
 import { toast } from "sonner";
 import { AppPreviewSheet } from "@/components/AppPreviewRow";
 import type { AppImages } from "@/lib/appImages";
+import { liveButNotMoved, type StoreInfo } from "@/lib/storeWatch";
 import { DrawerPublishButton } from "@/components/PublishPanel";
 import { StatusMenuItems } from "@/components/RowActions";
 import { StatusGlyph } from "@/components/StatusGlyph";
@@ -77,6 +78,7 @@ export function StatusBoard({
   badges,
   images = {},
   publishing = {},
+  stores = {},
 }: {
   rows: AppRow[];
   team: TeamMember[];
@@ -89,6 +91,8 @@ export function StatusBoard({
   images?: Record<string, AppImages>;
   /** product id -> what the drawer's Publish needs: the client and the app */
   publishing?: Record<string, { client: Client; product: Product; update: boolean }>;
+  /** product id -> what Store Watch last saw on the store */
+  stores?: Record<string, StoreInfo>;
 }) {
   const router = useRouter();
   const [, start] = useTransition();
@@ -137,6 +141,9 @@ export function StatusBoard({
 
   const keystoreById = useMemo(() => new Map(keystores.map((k) => [k.id, k])), [keystores]);
   const statusOf = (r: AppRow) => moved[r.id] ?? r.status;
+  // The store already shows this release, but it isn't in Production yet.
+  const liveNow = (r: AppRow) =>
+    liveButNotMoved(stores[r.product_id] ?? null, statusOf(r), r.build_version, r.release_version);
 
   // Everything the person/client/store filters allow, before focus and search.
   const scoped = useMemo(
@@ -382,6 +389,7 @@ export function StatusBoard({
                         row={r}
                         badge={badges[r.project_name]}
                         status={statusOf(r)}
+                        liveNow={liveNow(r)}
                         dragging={dragId === r.id}
                         onDragStart={(e) => {
                           e.dataTransfer.setData("text/plain", r.id);
@@ -410,6 +418,7 @@ export function StatusBoard({
                     return (
                       <ClientGroup
                         key={group.clientId}
+                        liveCount={group.rows.filter(liveNow).length}
                         group={group}
                         status={status}
                         statusOf={statusOf}
@@ -456,6 +465,9 @@ export function StatusBoard({
           assigneeName={preview.assignee_name}
           keystore={(preview.keystore_id && keystoreById.get(preview.keystore_id)) || null}
           images={images[preview.product_id] ?? null}
+          store={stores[preview.product_id] ?? null}
+          releaseVersion={preview.release_version}
+          platform={preview.platform}
           publish={
             publishing[preview.product_id] && !publishing[preview.product_id].product.archived ? (
               <DrawerPublishButton
@@ -479,6 +491,7 @@ function BoardCard({
   row,
   badge,
   status,
+  liveNow,
   dragging,
   onDragStart,
   onDragEnd,
@@ -488,6 +501,8 @@ function BoardCard({
   row: AppRow;
   badge?: LineBadge;
   status: AppStatus;
+  /** The store already shows this release; it's waiting to be moved to Production. */
+  liveNow: boolean;
   dragging: boolean;
   onDragStart: (e: DragEvent) => void;
   onDragEnd: () => void;
@@ -550,6 +565,18 @@ function BoardCard({
         </DropdownMenu>
       </div>
 
+      {liveNow && (
+        <div
+          className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-good-soft px-2 py-0.5 text-[11px] font-semibold text-good"
+          title="The store already shows this version — move it to Production"
+        >
+          <span className="relative flex size-1.5">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-good opacity-60" />
+            <span className="relative inline-flex size-1.5 rounded-full bg-good" />
+          </span>
+          Live on store
+        </div>
+      )}
       <div className="mt-2 flex items-center gap-1.5">
         <StoreIcon platform={row.platform} size={13} />
         {row.build_version && (
@@ -640,6 +667,7 @@ function ClientGroup({
   status,
   statusOf,
   badges,
+  liveCount,
   expanded,
   onToggle,
   children,
@@ -648,6 +676,8 @@ function ClientGroup({
   status: AppStatus;
   statusOf: (r: AppRow) => AppStatus;
   badges: Record<string, LineBadge>;
+  /** How many of its apps the store already shows live. */
+  liveCount: number;
   expanded: boolean;
   onToggle: () => void;
   children: React.ReactNode[];
@@ -692,6 +722,14 @@ function ClientGroup({
         >
           <span className="flex w-full items-center gap-1.5">
             <span className="truncate text-[13px] font-semibold">{group.clientName}</span>
+            {liveCount > 0 && !expanded && (
+              <span
+                className="shrink-0 rounded-full bg-good-soft px-1.5 text-[10px] font-semibold text-good"
+                title="The store already shows these — move them to Production"
+              >
+                {liveCount} live
+              </span>
+            )}
             <span className="font-mono text-[10px] text-muted-foreground">#{group.ticket}</span>
             <span className="ml-auto flex items-center gap-0.5 rounded-full bg-muted px-1.5 text-[11px] font-medium tabular-nums text-muted-foreground">
               {expanded ? "Fold" : `${group.rows.length} apps`}

@@ -6,10 +6,12 @@ import { StatusChip } from "@/components/StatusChip";
 import { CopyButton } from "@/components/CopyButton";
 import { CodeEditor } from "@/components/CodeEditor";
 import { KeystoreDownloadButton } from "@/components/KeystoreDownloadButton";
-import { formatDate } from "@/lib/constants";
+import { formatDate, PLATFORMS } from "@/lib/constants";
 import { ImageIcon } from "lucide-react";
 import type { AppImages } from "@/lib/appImages";
-import type { App, Keystore } from "@/lib/types";
+import { StoreCheckButton } from "@/components/StoreCheckButton";
+import { liveButNotMoved, type StoreInfo } from "@/lib/storeWatch";
+import type { App, Keystore, Platform } from "@/lib/types";
 
 // Clicks on these keep doing their own job instead of opening the preview.
 const INTERACTIVE = "a, button, input, select, textarea, label, [data-modal]";
@@ -25,6 +27,9 @@ export function AppPreviewRow({
   keystore,
   images = null,
   publish,
+  store = null,
+  releaseVersion = null,
+  platform,
   className,
   children,
 }: {
@@ -35,6 +40,10 @@ export function AppPreviewRow({
   images?: AppImages | null;
   /** The Publish button for this app, when it can be published. */
   publish?: ReactNode;
+  /** What Store Watch last saw on the store. */
+  store?: StoreInfo | null;
+  releaseVersion?: string | null;
+  platform?: Platform;
   className?: string;
   children: ReactNode;
 }) {
@@ -65,6 +74,9 @@ export function AppPreviewRow({
         keystore={keystore}
         images={images}
         publish={publish}
+        store={store}
+        releaseVersion={releaseVersion}
+        platform={platform}
       />
     </>
   );
@@ -80,6 +92,9 @@ export function AppPreviewSheet({
   keystore,
   images = null,
   publish,
+  store = null,
+  releaseVersion = null,
+  platform,
 }: {
   open: boolean;
   onClose: () => void;
@@ -91,7 +106,13 @@ export function AppPreviewSheet({
   images?: AppImages | null;
   /** The Publish button for this app, shown at the top. */
   publish?: ReactNode;
+  /** What Store Watch last saw on the store, and the release's version to compare. */
+  store?: StoreInfo | null;
+  releaseVersion?: string | null;
+  platform?: Platform;
 }) {
+  const storeName = platform ? PLATFORMS[platform].label : "the store";
+  const liveNow = liveButNotMoved(store, app.status, app.build_version, releaseVersion);
   const imageLinks = images
     ? ([
         ["Icon", images.icon],
@@ -106,6 +127,14 @@ export function AppPreviewSheet({
       title={app.app_name || app.project_name}
       subtitle={app.app_name ? app.project_name : undefined}
     >
+      {liveNow && (
+        <div className="border-b bg-good-soft px-5 py-3 text-[13px]">
+          <p className="font-semibold text-good">Live on {storeName} as v{store?.version}</p>
+          <p className="text-[12px] text-muted-foreground">
+            The store already has this version. Move it to Production when you&apos;re ready.
+          </p>
+        </div>
+      )}
       {publish && <div className="border-b px-5 py-3">{publish}</div>}
       <dl className="divide-y divide-border px-5">
         <Field label="Status">
@@ -136,6 +165,30 @@ export function AppPreviewSheet({
               {app.store_url}
             </a>
           )}
+        </Field>
+        <Field label="On store">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 text-[13px]">
+              {!store || store.live === null ? (
+                <span className="text-muted-foreground">Not checked yet</span>
+              ) : store.live ? (
+                <span>
+                  <span className="font-medium text-good">Live</span>
+                  {store.version && <> · v{store.version}</>}
+                  {store.updatedAt && <> · updated {formatDate(store.updatedAt)}</>}
+                </span>
+              ) : (
+                <span className="text-muted-foreground">Not on the store yet</span>
+              )}
+              {store?.error && <p className="text-[11px] text-bad">Last check failed: {store.error}</p>}
+              {store?.checkedAt && (
+                <p className="text-[11px] text-muted-foreground">
+                  Checked {new Date(store.checkedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                </p>
+              )}
+            </div>
+            <StoreCheckButton productId={app.product_id} />
+          </div>
         </Field>
         <Field label="Metadata">
           {imageLinks.length > 0 && (

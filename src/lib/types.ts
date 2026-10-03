@@ -133,6 +133,12 @@ export type Product = {
   icon_url: string | null;
   /** The client's own note from the intake form; `note` stays the team's. */
   client_note: string | null;
+  /** Store Watch (016): what the store's public page says. null = never checked. */
+  store_live: boolean | null;
+  store_version: string | null;
+  store_updated_at: string | null;
+  store_checked_at: string | null;
+  store_error: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -1371,3 +1371,22 @@ export async function submitIntake(
   refresh();
   return { ok: true };
 }
+
+// -------------------------------------------------------------- store watch
+
+/**
+ * Look one app up on its store right now (the hourly check does the rest).
+ * Runs the store-watch Edge Function as the signed-in team member.
+ */
+export async function checkStoreNow(productId: string): Promise<ActionResult> {
+  const supabase = await db();
+  const { data, error } = await supabase.functions.invoke("store-watch", {
+    body: { productId },
+  });
+  if (error) return { ok: false, error: error.message };
+  const result = (data as { results?: { error?: string }[] } | null)?.results?.[0];
+  if (!result) return { ok: false, error: "This app has no package name or bundle ID to look up." };
+  if (result.error) return { ok: false, error: result.error };
+  refresh();
+  return { ok: true };
+}

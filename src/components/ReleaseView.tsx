@@ -5,6 +5,7 @@ import { AppPreviewRow } from "@/components/AppPreviewRow";
 import { imagesOf } from "@/lib/appImages";
 import { DrawerPublishButton } from "@/components/PublishPanel";
 import { isFirstPublish } from "@/lib/publish";
+import { liveButNotMoved, storeInfoOf } from "@/lib/storeWatch";
 import { InlineAssignee, InlineText } from "@/components/InlineEdit";
 import { ReleaseDialog } from "@/components/dialogs/ReleaseDialog";
 import { SubmissionDialog } from "@/components/dialogs/SubmissionDialog";
@@ -214,6 +215,9 @@ export function ReleaseView({
                       assigneeName={(app.assigned_to && names.get(app.assigned_to)) || null}
                       keystore={(app.keystore_id && keystoreById.get(app.keystore_id)) || null}
                       images={imagesOf(products.find((p) => p.id === app.product_id))}
+                      store={storeInfoOf(products.find((p) => p.id === app.product_id))}
+                      releaseVersion={release.version}
+                      platform={platform}
                       publish={(() => {
                         const product = products.find((p) => p.id === app.product_id);
                         if (!product || product.archived) return null;
@@ -250,6 +254,19 @@ export function ReleaseView({
                       <td className="td">
                         <div className="flex items-center gap-2">
                           <StatusSelect appId={app.id} status={app.status} />
+                          {liveButNotMoved(
+                            storeInfoOf(products.find((p) => p.id === app.product_id)),
+                            app.status,
+                            app.build_version,
+                            release.version,
+                          ) && (
+                            <span
+                              className="whitespace-nowrap rounded-full bg-good-soft px-2 py-0.5 text-[11px] font-semibold text-good"
+                              title="The store already shows this version — move it to Production"
+                            >
+                              Live on store
+                            </span>
+                          )}
                           {isStale(app.status, app.status_changed_at) && (
                             <span
                               className="text-[11px] font-medium text-warn"

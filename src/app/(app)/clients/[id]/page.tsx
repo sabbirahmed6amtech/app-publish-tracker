@@ -374,6 +374,13 @@ function AppsTab({
                         ) : (
                           <span className="text-muted-foreground/60">Not live yet</span>
                         )}
+                        {p.store_checked_at && (
+                          <div className="mt-0.5 text-[11px] text-muted-foreground">
+                            {p.store_live
+                              ? `Live on store${p.store_version ? ` · v${p.store_version}` : ""}`
+                              : "Not on the store"}
+                          </div>
+                        )}
                       </td>
                       <td className="td whitespace-nowrap">
                         {last ? (

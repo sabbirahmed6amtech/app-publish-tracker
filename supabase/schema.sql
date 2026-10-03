@@ -190,6 +190,12 @@ create table products (
   screenshots_url        text,
   icon_url               text,                 -- link to the app icon (014)
   client_note            text,                 -- the client's note from the form (015)
+  -- Store Watch (016): what the store's public page says; null = never checked.
+  store_live             boolean,
+  store_version          text,
+  store_updated_at       timestamptz,
+  store_checked_at       timestamptz,
+  store_error            text,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
   unique (account_id, project_name)
@@ -805,3 +811,51 @@ revoke all on function public.intake_get(text) from public;
 revoke all on function public.intake_submit(text, jsonb, jsonb, jsonb) from public;
 grant execute on function public.intake_get(text) to anon, authenticated;
 grant execute on function public.intake_submit(text, jsonb, jsonb, jsonb) to anon, authenticated;
+
+-- Store Watch (016): the hourly / daily store checks.
+-- The key the scheduler sends to the function. Generated once, kept in Vault.
+do $$
+begin
+  if not exists (select 1 from vault.secrets where name = 'store_watch_key') then
+    perform vault.create_secret(encode(extensions.gen_random_bytes(24), 'hex'), 'store_watch_key');
+  end if;
+end $$;
+
+-- The function compares the key it receives with this; only the service role may read it.
+create or replace function public.store_watch_key()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select decrypted_secret from vault.decrypted_secrets where name = 'store_watch_key';
+$$;
+revoke all on function public.store_watch_key() from public, anon, authenticated;
+grant execute on function public.store_watch_key() to service_role;
+
+create extension if not exists pg_cron;
+create extension if not exists pg_net with schema extensions;
+
+-- Calls the function with the key from Vault; `scope` is "waiting" or "all".
+create or replace function public.store_watch_run(scope text)
+returns bigint
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  select net.http_post(
+    url := 'https://jwpsarpfscjdvaiwfnpw.supabase.co/functions/v1/store-watch',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-store-watch-key', (select decrypted_secret from vault.decrypted_secrets where name = 'store_watch_key')
+    ),
+    body := jsonb_build_object('scope', scope),
+    timeout_milliseconds := 140000
+  );
+$$;
+revoke all on function public.store_watch_run(text) from public, anon, authenticated;
+
+select cron.unschedule(jobid) from cron.job where jobname in ('store-watch-hourly', 'store-watch-daily');
+-- Hourly, running apps only (017): the function skips apps already in Production.
+select cron.schedule('store-watch-hourly', '7 * * * *', $$ select public.store_watch_run('running') $$);

@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusBoard } from "@/components/StatusBoard";
 import { imagesOf, type AppImages } from "@/lib/appImages";
 import { everLiveProducts, isFirstPublish } from "@/lib/publish";
+import { storeInfoOf, type StoreInfo } from "@/lib/storeWatch";
 import {
   activeMembers,
   flatten,
@@ -40,6 +41,9 @@ export default async function MyWorkPage() {
         badges={lineBadges(lines)}
         images={Object.fromEntries(
           clients.flatMap((c) => c.products).map((p) => [p.id, imagesOf(p) as AppImages]),
+        )}
+        stores={Object.fromEntries(
+          clients.flatMap((c) => c.products).map((p) => [p.id, storeInfoOf(p) as StoreInfo]),
         )}
         publishing={Object.fromEntries(
           clients.flatMap(({ products, releases, keystores, publisher_accounts, ...client }) => {
