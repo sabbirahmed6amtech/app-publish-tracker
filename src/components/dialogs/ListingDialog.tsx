@@ -153,6 +153,24 @@ export function ListingDialog({
               </>
             )}
 
+            <section className="grid gap-3 sm:grid-cols-2">
+              <LinkField id="ls-icon" name="icon_url" label="App icon link" value={product.icon_url} />
+              <LinkField
+                id="ls-shots"
+                name="screenshots_url"
+                label="Screenshots link"
+                value={product.screenshots_url}
+              />
+              {!ios && (
+                <LinkField
+                  id="ls-graphic"
+                  name="feature_graphic_url"
+                  label="Feature graphic link"
+                  value={product.feature_graphic_url}
+                />
+              )}
+            </section>
+
             <section className="rounded-xl border bg-muted/30 p-3.5">
               <h3 className="text-[13px] font-semibold">App Review access</h3>
               <p className="mb-3 text-[11px] text-muted-foreground">
@@ -239,6 +257,47 @@ export function ListingDialog({
         </form>
       </Modal>
     </>
+  );
+}
+
+/** A link the client shared (icon, screenshots folder, banner), with a way to open it. */
+function LinkField({
+  id,
+  name,
+  label,
+  value,
+}: {
+  id: string;
+  name: string;
+  label: string;
+  value: string | null;
+}) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between">
+        <label className="label mb-0" htmlFor={id}>
+          {label}
+        </label>
+        {value && (
+          <a
+            href={value}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[11px] font-medium text-muted-foreground hover:text-foreground hover:underline"
+          >
+            Open
+          </a>
+        )}
+      </div>
+      <input
+        id={id}
+        name={name}
+        type="url"
+        defaultValue={value ?? ""}
+        placeholder="https://drive.google.com/…"
+        className="field"
+      />
+    </div>
   );
 }
 

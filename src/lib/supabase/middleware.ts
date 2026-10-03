@@ -3,9 +3,10 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
 type CookieList = { name: string; value: string; options?: CookieOptions }[];
 
-// /track is the public status tracker; it reads only through the
-// tracker_* database functions, never the tables.
-const PUBLIC_PATHS = ["/login", "/auth", "/track"];
+// /track is the public status tracker and /intake the client intake form;
+// they go only through the tracker_* and intake_* database functions, never
+// the tables.
+const PUBLIC_PATHS = ["/login", "/auth", "/track", "/intake"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });

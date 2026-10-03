@@ -105,6 +105,8 @@ export function PublishPanel({
   platform = "play_store",
   accountName,
   badge,
+  triggerLabel = "Publish",
+  triggerClassName = "btn btn-ghost h-7 gap-1 px-2 text-[12px]",
 }: {
   client: Client;
   product: Product;
@@ -114,6 +116,9 @@ export function PublishPanel({
   accountName: string;
   /** The app's product-line logo, for the header. */
   badge?: LineBadge;
+  /** The button that opens the popup — a small one in tables, a big one in the drawer. */
+  triggerLabel?: string;
+  triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -121,12 +126,12 @@ export function PublishPanel({
     <>
       <button
         type="button"
-        className="btn btn-ghost h-7 gap-1 px-2 text-[12px]"
+        className={triggerClassName}
         onClick={() => setOpen(true)}
         title={`Fill ${STORE[platform].console} for this app`}
       >
         <RocketIcon className="size-3.5" />
-        Publish
+        {triggerLabel}
       </button>
       {open && (
         // A wide popup rather than a side drawer: details on the left, the
@@ -297,6 +302,18 @@ function PanelBody({
         </aside>
       </div>
     </div>
+  );
+}
+
+/** The Publish button as the app side drawer shows it: full width, naming the store. */
+export function DrawerPublishButton(props: Omit<Parameters<typeof PublishPanel>[0], "triggerLabel" | "triggerClassName">) {
+  const platform = props.platform ?? "play_store";
+  return (
+    <PublishPanel
+      {...props}
+      triggerLabel={`Publish to ${STORE[platform].store}`}
+      triggerClassName="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl text-[14px] font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md [background:linear-gradient(135deg,var(--st-production),color-mix(in_oklch,var(--st-production)_55%,var(--st-ongoing)))]"
+    />
   );
 }
 

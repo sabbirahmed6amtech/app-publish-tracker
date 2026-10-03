@@ -10,6 +10,16 @@ import {
   suggestNextVersion,
 } from "@/lib/constants";
 import type { AccountType, AppStatus, Platform } from "@/lib/types";
+import {
+  check,
+  isEmail,
+  isEmailOrPhone,
+  isName,
+  isPhone,
+  isUrl,
+  max,
+  type Rule,
+} from "@/lib/validate";
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
 
@@ -569,6 +579,9 @@ export async function saveProductListing(fd: FormData): Promise<ActionResult> {
     "ios_primary_category",
     "ios_secondary_category",
     "ios_copyright",
+    "icon_url",
+    "screenshots_url",
+    "feature_graphic_url",
   ];
   const update = Object.fromEntries(
     fields.filter((f) => fd.has(f)).map((f) => [f, nullable(fd, f)]),
@@ -1191,4 +1204,170 @@ export async function signOut() {
   const supabase = await db();
   await supabase.auth.signOut();
   redirect("/login");
+}
+
+// ------------------------------------------------------------ client intake
+
+/**
+ * A private link for the client to fill in their store details. A new link
+ * replaces the old one, which stops working.
+ */
+export async function createIntakeLink(clientId: string): Promise<ActionResult> {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  const token = Buffer.from(bytes).toString("base64url");
+  const supabase = await db();
+  const { error } = await supabase
+    .from("clients")
+    .update({ intake_token: token })
+    .eq("id", clientId);
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true, id: token };
+}
+
+export async function disableIntakeLink(clientId: string): Promise<ActionResult> {
+  const supabase = await db();
+  const { error } = await supabase
+    .from("clients")
+    .update({ intake_token: null })
+    .eq("id", clientId);
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true };
+}
+
+const INTAKE_CLIENT_FIELDS = [
+  "play_privacy_url",
+  "play_delete_account_url",
+  "play_contact_email",
+  "play_listing_email",
+  "play_contact_phone",
+  "play_website",
+  "play_default_language",
+  "store_support_url",
+  "store_marketing_url",
+  "review_contact_first_name",
+  "review_contact_last_name",
+  "review_contact_phone",
+  "review_contact_email",
+] as const;
+
+// Bundle IDs, categories, keywords and the like stay with the team.
+const INTAKE_APP_FIELDS = [
+  "app_name",
+  "short_description",
+  "long_description",
+  "demo_login",
+  "demo_password",
+  "demo_details",
+  "icon_url",
+  "screenshots_url",
+  "feature_graphic_url",
+  "client_note",
+] as const;
+
+
+// The client's store accounts: name, type and how the team gets in.
+const INTAKE_ACCOUNT_FIELDS = [
+  "account_name",
+  "account_type",
+  "access_method",
+  "access_email",
+  "login_password",
+] as const;
+
+/** What each field the client can send must look like (see lib/validate). */
+const INTAKE_RULES: Record<string, Rule[]> = {
+  play_privacy_url: [max(300), isUrl],
+  play_delete_account_url: [max(300), isUrl],
+  play_website: [max(300), isUrl],
+  store_support_url: [max(300), isUrl],
+  store_marketing_url: [max(300), isUrl],
+  play_contact_email: [max(100), isEmail],
+  play_listing_email: [max(100), isEmail],
+  review_contact_email: [max(100), isEmail],
+  play_contact_phone: [max(30), isPhone],
+  review_contact_phone: [max(30), isPhone],
+  review_contact_first_name: [max(60), isName],
+  review_contact_last_name: [max(60), isName],
+  play_default_language: [max(100)],
+  app_name: [max(Math.min(PLAY_LIMITS.appName, APP_STORE_LIMITS.appName))],
+  short_description: [max(PLAY_LIMITS.shortDescription)],
+  long_description: [max(PLAY_LIMITS.longDescription)],
+  demo_login: [max(100), isEmailOrPhone],
+  demo_password: [max(200)],
+  demo_details: [max(500)],
+  icon_url: [max(500), isUrl],
+  screenshots_url: [max(500), isUrl],
+  feature_graphic_url: [max(500), isUrl],
+  client_note: [max(500)],
+  account_name: [max(100)],
+  access_email: [max(100), isEmail],
+  login_password: [max(200)],
+};
+
+/** The first field that breaks its rule, as a message naming it. */
+function intakeProblem(fields: Record<string, string | undefined>, owner?: string): string | null {
+  for (const [key, value] of Object.entries(fields)) {
+    const problem = check(value ?? "", ...(INTAKE_RULES[key] ?? []));
+    if (problem) {
+      const label = key.replace(/_url$/, "").replace(/_/g, " ");
+      return `${owner ? `${owner} — ` : ""}${label}: ${problem}`;
+    }
+  }
+  return null;
+}
+
+/**
+ * The client's own submission from the intake form — no login; the link's
+ * token is checked by the database, which saves only these fields. The same
+ * rules as the form are checked again here, so nothing skips them.
+ */
+export async function submitIntake(
+  token: string,
+  client: Record<string, string>,
+  apps: ({ id: string } & Record<string, string>)[],
+  accounts: ({ id: string } & Record<string, string>)[] = [],
+): Promise<ActionResult> {
+  const pick = <K extends string>(from: Record<string, string>, keys: readonly K[]) =>
+    Object.fromEntries(
+      keys.filter((k) => typeof from[k] === "string").map((k) => [k, from[k].trim()]),
+    ) as Partial<Record<K, string>>;
+
+  const clientData = pick(client, INTAKE_CLIENT_FIELDS);
+  const clientProblem = intakeProblem(clientData);
+  if (clientProblem) return { ok: false, error: clientProblem };
+
+  const appData = [];
+  for (const app of apps) {
+    const fields = pick(app, INTAKE_APP_FIELDS);
+    const problem = intakeProblem(fields, fields.app_name || "An app");
+    if (problem) return { ok: false, error: problem };
+    appData.push({ id: String(app.id), ...fields });
+  }
+
+  const accountData = [];
+  for (const account of accounts) {
+    const fields = pick(account, INTAKE_ACCOUNT_FIELDS);
+    const problem = intakeProblem(fields, fields.account_name || "A store account");
+    if (problem) return { ok: false, error: problem };
+    if (fields.account_type && !["organization", "personal"].includes(fields.account_type)) {
+      return { ok: false, error: "Pick Organization or Personal for each store account." };
+    }
+    if (fields.access_method && !["invite", "login"].includes(fields.access_method)) {
+      return { ok: false, error: "Pick how we'll get access to each store account." };
+    }
+    accountData.push({ id: String(account.id), ...fields });
+  }
+
+  const supabase = await db();
+  const { error } = await supabase.rpc("intake_submit", {
+    p_token: token,
+    p_client: clientData,
+    p_apps: appData,
+    p_accounts: accountData,
+  });
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true };
 }
