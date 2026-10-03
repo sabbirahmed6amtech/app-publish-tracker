@@ -188,6 +188,8 @@ create table products (
   publishing_countries   text,
   feature_graphic_url    text,
   screenshots_url        text,
+  icon_url               text,                 -- link to the app icon (014)
+  client_note            text,                 -- the client's note from the form (015)
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
   unique (account_id, project_name)
@@ -666,6 +668,8 @@ as $$
                'publishing_countries',   p.publishing_countries,
                'feature_graphic_url',    p.feature_graphic_url,
                'screenshots_url',        p.screenshots_url,
+               'icon_url',               p.icon_url,
+               'client_note',            p.client_note,
                'line',                   pl.name,
                'logo_path',              pl.logo_path
              ) order by pa.platform desc, p.sort_order, p.project_name), '[]'::jsonb)
@@ -771,6 +775,8 @@ begin
       publishing_countries   = case when v_app ? 'publishing_countries' then nullif(btrim(v_app->>'publishing_countries'), '') else publishing_countries end,
       feature_graphic_url    = case when v_app ? 'feature_graphic_url' then nullif(btrim(v_app->>'feature_graphic_url'), '') else feature_graphic_url end,
       screenshots_url        = case when v_app ? 'screenshots_url' then nullif(btrim(v_app->>'screenshots_url'), '') else screenshots_url end,
+      icon_url               = case when v_app ? 'icon_url' then nullif(btrim(v_app->>'icon_url'), '') else icon_url end,
+      client_note            = case when v_app ? 'client_note' then nullif(btrim(v_app->>'client_note'), '') else client_note end,
       ios_copyright          = case when v_app ? 'ios_copyright'          then nullif(btrim(v_app->>'ios_copyright'), '')          else ios_copyright end
     where p.id = (v_app->>'id')::uuid
       and p.client_id = v_client

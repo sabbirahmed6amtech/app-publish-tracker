@@ -7,6 +7,8 @@ import { CopyButton } from "@/components/CopyButton";
 import { CodeEditor } from "@/components/CodeEditor";
 import { KeystoreDownloadButton } from "@/components/KeystoreDownloadButton";
 import { formatDate } from "@/lib/constants";
+import { ImageIcon } from "lucide-react";
+import type { AppImages } from "@/lib/appImages";
 import type { App, Keystore } from "@/lib/types";
 
 // Clicks on these keep doing their own job instead of opening the preview.
@@ -21,6 +23,8 @@ export function AppPreviewRow({
   accountLabel,
   assigneeName,
   keystore,
+  images = null,
+  publish,
   className,
   children,
 }: {
@@ -28,6 +32,9 @@ export function AppPreviewRow({
   accountLabel: string;
   assigneeName: string | null;
   keystore: Keystore | null;
+  images?: AppImages | null;
+  /** The Publish button for this app, when it can be published. */
+  publish?: ReactNode;
   className?: string;
   children: ReactNode;
 }) {
@@ -56,6 +63,8 @@ export function AppPreviewRow({
         accountLabel={accountLabel}
         assigneeName={assigneeName}
         keystore={keystore}
+        images={images}
+        publish={publish}
       />
     </>
   );
@@ -69,6 +78,8 @@ export function AppPreviewSheet({
   accountLabel,
   assigneeName,
   keystore,
+  images = null,
+  publish,
 }: {
   open: boolean;
   onClose: () => void;
@@ -76,7 +87,18 @@ export function AppPreviewSheet({
   accountLabel: string;
   assigneeName: string | null;
   keystore: Keystore | null;
+  /** Links the client shared; the developer downloads and uploads them by hand. */
+  images?: AppImages | null;
+  /** The Publish button for this app, shown at the top. */
+  publish?: ReactNode;
 }) {
+  const imageLinks = images
+    ? ([
+        ["Icon", images.icon],
+        ["Screenshots", images.screenshots],
+        ["Banner", images.banner],
+      ].filter((l): l is [string, string] => !!l[1]))
+    : [];
   return (
     <Drawer
       open={open}
@@ -84,6 +106,7 @@ export function AppPreviewSheet({
       title={app.app_name || app.project_name}
       subtitle={app.app_name ? app.project_name : undefined}
     >
+      {publish && <div className="border-b px-5 py-3">{publish}</div>}
       <dl className="divide-y divide-border px-5">
         <Field label="Status">
           <StatusChip status={app.status} since={app.status_changed_at} />
@@ -113,6 +136,27 @@ export function AppPreviewSheet({
               {app.store_url}
             </a>
           )}
+        </Field>
+        <Field label="Metadata">
+          {imageLinks.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {imageLinks.map(([label, url]) => (
+                <a
+                  key={label}
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-1 text-[12px] font-medium hover:border-ring/60 hover:bg-muted"
+                >
+                  <ImageIcon className="size-3.5 text-muted-foreground" />
+                  {label}
+                </a>
+              ))}
+            </div>
+          )}
+        </Field>
+        <Field label="Client note">
+          {images?.note && <p className="whitespace-pre-wrap">{images.note}</p>}
         </Field>
         <Field label="Keystore">{keystore?.name}</Field>
         <Field label="JKS file">

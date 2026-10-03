@@ -2,6 +2,8 @@ import { ExternalLinkIcon } from "lucide-react";
 import { StatusSelect, DeleteButton } from "@/components/RowActions";
 import { CopyReportButton } from "@/components/CopyReportButton";
 import { AppPreviewRow } from "@/components/AppPreviewRow";
+import { imagesOf } from "@/lib/appImages";
+import { DrawerPublishButton } from "@/components/PublishPanel";
 import { InlineAssignee, InlineText } from "@/components/InlineEdit";
 import { ReleaseDialog } from "@/components/dialogs/ReleaseDialog";
 import { SubmissionDialog } from "@/components/dialogs/SubmissionDialog";
@@ -20,6 +22,7 @@ import {
   releaseState,
 } from "@/lib/constants";
 import type {
+  Client,
   Keystore,
   Product,
   ProductLine,
@@ -44,7 +47,8 @@ export function ReleaseView({
   lines,
 }: {
   release: ReleaseWithApps;
-  client: { id: string; name: string; ticket: string };
+  /** The whole client: the drawer's Publish needs its store details. */
+  client: Client;
   accounts: PublisherAccount[];
   keystores: Keystore[];
   products: Product[];
@@ -205,6 +209,20 @@ export function ReleaseView({
                       }`}
                       assigneeName={(app.assigned_to && names.get(app.assigned_to)) || null}
                       keystore={(app.keystore_id && keystoreById.get(app.keystore_id)) || null}
+                      images={imagesOf(products.find((p) => p.id === app.product_id))}
+                      publish={(() => {
+                        const product = products.find((p) => p.id === app.product_id);
+                        if (!product || product.archived) return null;
+                        return (
+                          <DrawerPublishButton
+                            client={client}
+                            product={product}
+                            platform={platform}
+                            accountName={account?.account_name ?? ""}
+                            badge={badges[app.project_name]}
+                          />
+                        );
+                      })()}
                       className="border-b last:border-0 hover:bg-muted/40"
                     >
                       <td className="td">

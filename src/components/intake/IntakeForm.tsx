@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeftIcon,
@@ -11,6 +11,7 @@ import {
   MailPlusIcon,
   EyeIcon,
   EyeOffIcon,
+  ImageIcon,
   PartyPopperIcon,
 } from "lucide-react";
 import { CopyButton } from "@/components/CopyButton";
@@ -19,12 +20,28 @@ import { StoreIcon } from "@/components/StoreIcon";
 import { ProjectLogo } from "@/components/ProjectLogo";
 import { submitIntake } from "@/lib/actions";
 import { APP_STORE_LIMITS, PLAY_LIMITS, displayName } from "@/lib/constants";
+import {
+  check,
+  isEmail,
+  isEmailOrPhone,
+  isName,
+  isPhone,
+  isUrl,
+  max,
+  type Rule,
+} from "@/lib/validate";
 import type { Intake, IntakeAccount, IntakeApp } from "@/lib/types";
 
 type Values = Record<string, string>;
 
 /** The address clients invite to their store accounts. */
 const TEAM_EMAIL = "frontend.6amtech@gmail.com";
+
+/** Which errors to show: a field's once it's been left, all of them after a save attempt. */
+const Validation = createContext<{
+  error: (key: string) => string | undefined;
+  touch: (key: string) => void;
+}>({ error: () => undefined, touch: () => {} });
 
 /** One app as the client thinks of it — its Play and/or App Store listing. */
 type Group = {
@@ -116,6 +133,10 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
         login: first("demo_login"),
         password: "",
         notes: first("demo_details"),
+        icon: first("icon_url"),
+        shots: first("screenshots_url"),
+        banner: g.play !== undefined ? text(form.apps[g.play].feature_graphic_url) : "",
+        metaNote: first("client_note"),
       };
     }),
   );
@@ -184,12 +205,73 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
       ? [a.email, form.accounts[i].has_login_password || a.password ? "set" : ""]
       : []),
   ]);
+  // ── what's wrong, by field ──
+  const errors: Record<string, string> = {};
+  const rule = (key: string, value: string, ...rules: Rule[]) => {
+    const problem = check(value, ...rules);
+    if (problem) errors[key] = problem;
+  };
+  rule("biz.email", biz.email, max(100), isEmail);
+  rule("biz.phone", biz.phone, max(30), isPhone);
+  rule("biz.website", biz.website, max(300), isUrl);
+  rule("biz.privacy", biz.privacy, max(300), isUrl);
+  if (hasPlay) rule("biz.deleteAccount", biz.deleteAccount, max(300), isUrl);
+  if (hasIos) {
+    rule("biz.support", biz.support, max(300), isUrl);
+    rule("biz.contact", biz.contact, max(60), isName);
+  }
+  accounts.forEach((a, i) => {
+    rule(`acc.${i}.name`, a.name, max(100));
+    if (a.method === "login") {
+      rule(`acc.${i}.email`, a.email, max(100), isEmail);
+      rule(`acc.${i}.password`, a.password, max(200));
+    }
+  });
+  groups.forEach((g, i) => {
+    const a = apps[i];
+    rule(`app.${i}.name`, a.name, max(Math.min(APP_STORE_LIMITS.appName, PLAY_LIMITS.appName)));
+    if (g.play !== undefined) rule(`app.${i}.short`, a.short, max(PLAY_LIMITS.shortDescription));
+    rule(`app.${i}.description`, a.description, max(PLAY_LIMITS.longDescription));
+    rule(`app.${i}.login`, a.login, max(100), isEmailOrPhone);
+    rule(`app.${i}.password`, a.password, max(200));
+    rule(`app.${i}.notes`, a.notes, max(500));
+    rule(`img.${i}.icon`, a.icon, max(500), isUrl);
+    rule(`img.${i}.shots`, a.shots, max(500), isUrl);
+    if (g.play !== undefined) rule(`img.${i}.banner`, a.banner, max(500), isUrl);
+    rule(`img.${i}.note`, a.metaNote, max(500));
+  });
+  const tabOf = (key: string) => {
+    const [scope, index] = key.split(".");
+    if (scope === "biz") return "business";
+    if (scope === "acc") return "accounts";
+    if (scope === "img") return "images";
+    return groups[Number(index)]?.key;
+  };
+
+  const [touched, setTouched] = useState<Set<string>>(new Set());
+  const [showAll, setShowAll] = useState(false);
+  const shown = (key: string) => (showAll || touched.has(key) ? errors[key] : undefined);
+  const validation = {
+    error: shown,
+    touch: (key: string) => setTouched((t) => (t.has(key) ? t : new Set(t).add(key))),
+  };
+  const tabHasError = (tabKey: string) =>
+    Object.keys(errors).some((k) => tabOf(k) === tabKey && shown(k));
+
+  const imageNeeds = groups.flatMap((g, i) => [
+    apps[i].icon,
+    apps[i].shots,
+    ...(g.play !== undefined ? [apps[i].banner] : []),
+  ]);
   const tabs = [
     { key: "business", title: "Your business", sub: "Contact & policies", needs: bizNeeds },
     ...(form.accounts.length
       ? [{ key: "accounts", title: "Store accounts", sub: "Name & access", needs: accountNeeds }]
       : []),
     ...groups.map((g, i) => ({ key: g.key, title: g.title, sub: storesOf(g), needs: appNeeds(g, i), group: g })),
+    ...(groups.length
+      ? [{ key: "images", title: "Metadata", sub: "Images & notes", needs: imageNeeds }]
+      : []),
   ];
   const count = (needs: string[]) => needs.filter((v) => v.trim()).length;
   const filled = tabs.reduce((n, t) => n + count(t.needs), 0);
@@ -200,6 +282,18 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
   const last = tab === tabs.length - 1;
 
   function save(then?: () => void) {
+    const wrong = Object.keys(errors);
+    if (wrong.length) {
+      setShowAll(true);
+      const first = tabs.findIndex((t) => t.key === tabOf(wrong[0]));
+      if (first >= 0) setTab(first);
+      setError(
+        wrong.length === 1
+          ? "One field needs fixing — it's marked in red."
+          : `${wrong.length} fields need fixing — they're marked in red.`,
+      );
+      return;
+    }
     if (!dirty) return then?.();
     setError(null);
     const [first, ...rest] = biz.contact.trim().split(/\s+/);
@@ -228,7 +322,12 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
         demo_login: apps[i].login,
         demo_password: apps[i].password,
         demo_details: apps[i].notes,
-        ...(index === g.play ? { short_description: apps[i].short } : {}),
+        icon_url: apps[i].icon,
+        screenshots_url: apps[i].shots,
+        client_note: apps[i].metaNote,
+        ...(index === g.play
+          ? { short_description: apps[i].short, feature_graphic_url: apps[i].banner }
+          : {}),
       })),
     );
 
@@ -320,6 +419,8 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
                       <span className="grid size-7 shrink-0 place-items-center rounded-md bg-info-soft text-info">
                         {t.key === "accounts" ? (
                           <KeyRoundIcon className="size-3.5" />
+                        ) : t.key === "images" ? (
+                          <ImageIcon className="size-3.5" />
                         ) : (
                           <Building2Icon className="size-3.5" />
                         )}
@@ -339,16 +440,25 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
                         {t.sub}
                       </span>
                     </span>
-                    <span
-                      className={`grid size-5 shrink-0 place-items-center rounded-full text-[9px] font-semibold tabular-nums ${
-                        complete
-                          ? "bg-[var(--st-production)] text-white"
-                          : "text-muted-foreground ring-1 ring-border"
-                      }`}
-                      title={`${n} of ${t.needs.length} filled`}
-                    >
-                      {complete ? <CheckIcon className="pub-pop size-3" strokeWidth={3} /> : t.needs.length - n}
-                    </span>
+                    {tabHasError(t.key) ? (
+                      <span
+                        className="grid size-5 shrink-0 place-items-center rounded-full bg-[var(--st-rejected)] text-[11px] font-bold text-white"
+                        title="Something here needs fixing"
+                      >
+                        !
+                      </span>
+                    ) : (
+                      <span
+                        className={`grid size-5 shrink-0 place-items-center rounded-full text-[9px] font-semibold tabular-nums ${
+                          complete
+                            ? "bg-[var(--st-production)] text-white"
+                            : "text-muted-foreground ring-1 ring-border"
+                        }`}
+                        title={`${n} of ${t.needs.length} filled`}
+                      >
+                        {complete ? <CheckIcon className="pub-pop size-3" strokeWidth={3} /> : t.needs.length - n}
+                      </span>
+                    )}
                   </button>
                 </li>
               );
@@ -364,7 +474,9 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
         </nav>
 
         {/* ── the open tab ── */}
+        <Validation.Provider value={validation}>
         <form
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
             save(() => (last ? setDone(true) : go(tab + 1)));
@@ -395,14 +507,84 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
                     ? "How your users can reach you, and your policy pages."
                     : current.key === "accounts"
                       ? "The store accounts your apps are published under, and how we can get in."
+                      : current.key === "images"
+                        ? "Links to your app's images — a Google Drive link works, as long as anyone with the link can view it — and anything else we should know."
                       : "As it should appear on the store, and a login for the reviewers."}
                 </p>
 
-                {current.key === "accounts" ? (
+                {current.key === "images" ? (
+                  <div className="space-y-4">
+                    {groups.map((g, i) => (
+                      <section key={g.key} className="rounded-xl border p-4">
+                        <h3 className="mb-4 flex items-center gap-2.5 text-[14px] font-semibold">
+                          <ProjectLogo
+                            badge={g.line ? { line: g.line, logo: g.logo } : null}
+                            project={g.project}
+                          />
+                          <span className="min-w-0">
+                            <span className="block truncate">{apps[i].name || g.title}</span>
+                            <span className="flex items-center gap-1 text-[11px] font-normal text-muted-foreground">
+                              {g.play !== undefined && <StoreIcon platform="play_store" size={10} />}
+                              {g.ios !== undefined && <StoreIcon platform="app_store" size={10} />}
+                              {storesOf(g)}
+                            </span>
+                          </span>
+                        </h3>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <Input
+                            label="App icon / logo"
+                            hint="Square PNG, 1024 × 1024 px."
+                            type="url"
+                            vkey={`img.${i}.icon`}
+                            value={apps[i].icon}
+                            onChange={setA(i, "icon")}
+                            placeholder="https://drive.google.com/…"
+                          />
+                          <Input
+                            label="Screenshots"
+                            hint={
+                              g.ios !== undefined
+                                ? "A folder with phone screenshots — for iPhone, 1290 × 2796 px."
+                                : "A folder with 2–8 phone screenshots."
+                            }
+                            type="url"
+                            vkey={`img.${i}.shots`}
+                            value={apps[i].shots}
+                            onChange={setA(i, "shots")}
+                            placeholder="https://drive.google.com/…"
+                          />
+                          {g.play !== undefined && (
+                            <Input
+                              label="Feature graphic / banner"
+                              hint="For Google Play: 1024 × 500 px, PNG or JPEG."
+                              type="url"
+                              vkey={`img.${i}.banner`}
+                              value={apps[i].banner}
+                              onChange={setA(i, "banner")}
+                              placeholder="https://drive.google.com/…"
+                              wide
+                            />
+                          )}
+                          <TextArea
+                            label="Note"
+                            optional
+                            rows={3}
+                            hint="Anything we should know — e.g. which logo to use, or a tagline for the screenshots."
+                            vkey={`img.${i}.note`}
+                            value={apps[i].metaNote}
+                            onChange={setA(i, "metaNote")}
+                            max={500}
+                          />
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                ) : current.key === "accounts" ? (
                   <div className="space-y-4">
                     {form.accounts.map((acc, i) => (
                       <AccountCard
                         key={acc.id}
+                        index={i}
                         account={acc}
                         values={accounts[i]}
                         set={(k) => setAcc(i, k)}
@@ -411,12 +593,13 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
                   </div>
                 ) : current.key === "business" ? (
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <Input label="Support email" type="email" value={biz.email} onChange={setB("email")} placeholder="support@yourcompany.com" />
-                    <Input label="Support phone" type="tel" value={biz.phone} onChange={setB("phone")} placeholder="+1 555 010 0199" />
-                    <Input label="Website" optional type="url" value={biz.website} onChange={setB("website")} placeholder="https://yourcompany.com" wide />
+                    <Input label="Support email" type="email" vkey="biz.email" value={biz.email} onChange={setB("email")} placeholder="support@yourcompany.com" />
+                    <Input label="Support phone" type="tel" vkey="biz.phone" value={biz.phone} onChange={setB("phone")} placeholder="+1 555 010 0199" />
+                    <Input label="Website" optional type="url" vkey="biz.website" value={biz.website} onChange={setB("website")} placeholder="https://yourcompany.com" wide />
                     <Input
                       label="Privacy policy link"
                       type="url"
+                      vkey="biz.privacy"
                       value={biz.privacy}
                       onChange={setB("privacy")}
                       placeholder="https://yourcompany.com/privacy-policy"
@@ -425,8 +608,9 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
                     {hasPlay && (
                       <Input
                         label="Delete account link"
-                        hint="A page where users can ask to delete their account."
+                        hint="A page where users can ask to delete their account — your contact page works too."
                         type="url"
+                        vkey="biz.deleteAccount"
                         value={biz.deleteAccount}
                         onChange={setB("deleteAccount")}
                         placeholder="https://yourcompany.com/delete-account"
@@ -438,6 +622,7 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
                         <Input
                           label="Support page link"
                           type="url"
+                          vkey="biz.support"
                           value={biz.support}
                           onChange={setB("support")}
                           placeholder="https://yourcompany.com/support"
@@ -446,6 +631,7 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
                         <Input
                           label="Contact person"
                           hint="Who Apple can reach during review, at the email and phone above."
+                          vkey="biz.contact"
                           value={biz.contact}
                           onChange={setB("contact")}
                           placeholder="John Doe"
@@ -461,11 +647,12 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
                     const a = apps[i];
                     return (
                       <div className="grid gap-4 sm:grid-cols-2">
-                        <Input label="App name" value={a.name} onChange={setA(i, "name")} max={Math.min(APP_STORE_LIMITS.appName, PLAY_LIMITS.appName)} wide />
+                        <Input label="App name" vkey={`app.${i}.name`} value={a.name} onChange={setA(i, "name")} max={Math.min(APP_STORE_LIMITS.appName, PLAY_LIMITS.appName)} wide />
                         {g.play !== undefined && (
                           <Input
                             label="Short description"
                             hint="One line about the app."
+                            vkey={`app.${i}.short`}
                             value={a.short}
                             onChange={setA(i, "short")}
                             max={PLAY_LIMITS.shortDescription}
@@ -475,6 +662,7 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
                         <TextArea
                           label="Description"
                           hint="What the app does, as it should appear on the store."
+                          vkey={`app.${i}.description`}
                           value={a.description}
                           onChange={setA(i, "description")}
                           max={PLAY_LIMITS.longDescription}
@@ -486,11 +674,12 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
                             The store reviewers sign in with this to test the app. Only our team sees it.
                           </p>
                           <div className="grid gap-4 sm:grid-cols-2">
-                            <Input label="Email or phone" value={a.login} onChange={setA(i, "login")} autoComplete="off" />
-                            <Password value={a.password} onChange={setA(i, "password")} saved={g.hasPassword} />
+                            <Input label="Email or phone" vkey={`app.${i}.login`} value={a.login} onChange={setA(i, "login")} autoComplete="off" />
+                            <Password vkey={`app.${i}.password`} value={a.password} onChange={setA(i, "password")} saved={g.hasPassword} />
                             <Input
                               label="Notes for the reviewer"
                               optional
+                              vkey={`app.${i}.notes`}
                               value={a.notes}
                               onChange={setA(i, "notes")}
                               placeholder="e.g. Use the OTP 1234"
@@ -503,7 +692,7 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
                   })()
                 )}
 
-                {error && (
+                {error && !(showAll && Object.keys(errors).length === 0 && error.includes("fixing")) && (
                   <p className="mt-4 rounded-lg bg-bad-soft px-3 py-2.5 text-[13px] text-bad">{error}</p>
                 )}
               </div>
@@ -536,6 +725,7 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
             </>
           )}
         </form>
+        </Validation.Provider>
       </div>
     </div>
   );
@@ -545,10 +735,12 @@ export function IntakeForm({ token, form }: { token: string; form: Intake }) {
 
 /** One store account: its name, type, and how the team gets in. */
 function AccountCard({
+  index,
   account,
   values,
   set,
 }: {
+  index: number;
   account: IntakeAccount;
   values: Values;
   set: (key: string) => (value: string) => void;
@@ -568,6 +760,7 @@ function AccountCard({
         <Input
           label="Account name"
           hint="The developer name shown on the store."
+          vkey={`acc.${index}.name`}
           value={values.name}
           onChange={set("name")}
           placeholder="Acme Inc."
@@ -624,12 +817,14 @@ function AccountCard({
             <Input
               label="Login email"
               type="email"
+              vkey={`acc.${index}.email`}
               value={values.email}
               onChange={set("email")}
               placeholder="you@yourcompany.com"
               autoComplete="off"
             />
             <Password
+              vkey={`acc.${index}.password`}
               value={values.password}
               onChange={set("password")}
               saved={account.has_login_password}
@@ -756,6 +951,7 @@ function Field({
   label,
   optional,
   hint,
+  error,
   wide,
   children,
 }: {
@@ -763,6 +959,7 @@ function Field({
   label: string;
   optional?: boolean;
   hint?: string;
+  error?: string;
   wide?: boolean;
   children: React.ReactNode;
 }) {
@@ -773,9 +970,28 @@ function Field({
         {optional && <span className="ml-1 font-normal text-muted-foreground">(optional)</span>}
       </label>
       {children}
-      {hint && <p className="mt-1 text-[11px] text-muted-foreground">{hint}</p>}
+      {error ? (
+        <p id={`${id}-error`} className="mt-1 text-[11px] font-medium text-bad">
+          {error}
+        </p>
+      ) : (
+        hint && <p className="mt-1 text-[11px] text-muted-foreground">{hint}</p>
+      )}
     </div>
   );
+}
+
+/** A field's error (when it should show) and what to call when it's left. */
+function useValidation(key?: string) {
+  const v = useContext(Validation);
+  const error = key ? v.error(key) : undefined;
+  return {
+    error,
+    onBlur: () => key && v.touch(key),
+    invalid: error
+      ? "border-[var(--st-rejected)] ring-1 ring-[var(--st-rejected)]/30 focus-visible:ring-[var(--st-rejected)]/40"
+      : "",
+  };
 }
 
 /** "N characters left", once the client has started typing. */
@@ -794,6 +1010,7 @@ function Input({
   max,
   wide,
   autoComplete,
+  vkey,
 }: {
   label: string;
   optional?: boolean;
@@ -805,19 +1022,32 @@ function Input({
   max?: number;
   wide?: boolean;
   autoComplete?: string;
+  /** Validation key; see the rules in IntakeForm. */
+  vkey?: string;
 }) {
   const id = useId();
+  const v = useValidation(vkey);
   return (
-    <Field id={id} label={label} optional={optional} hint={max ? left(value, max, hint) : hint} wide={wide}>
+    <Field
+      id={id}
+      label={label}
+      optional={optional}
+      hint={max ? left(value, max, hint) : hint}
+      error={v.error}
+      wide={wide}
+    >
       <input
         id={id}
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={v.onBlur}
         placeholder={placeholder}
         maxLength={max}
         autoComplete={autoComplete}
-        className="field"
+        aria-invalid={!!v.error}
+        aria-describedby={v.error ? `${id}-error` : undefined}
+        className={`field ${v.invalid}`}
       />
     </Field>
   );
@@ -825,27 +1055,43 @@ function Input({
 
 function TextArea({
   label,
+  optional,
+  rows = 6,
   hint,
   value,
   onChange,
   max,
+  vkey,
 }: {
   label: string;
+  optional?: boolean;
+  rows?: number;
   hint?: string;
   value: string;
   onChange: (value: string) => void;
   max?: number;
+  vkey?: string;
 }) {
   const id = useId();
+  const v = useValidation(vkey);
   return (
-    <Field id={id} label={label} hint={max ? left(value, max, hint) : hint} wide>
+    <Field
+      id={id}
+      label={label}
+      optional={optional}
+      hint={max ? left(value, max, hint) : hint}
+      error={v.error}
+      wide
+    >
       <textarea
         id={id}
-        rows={6}
+        rows={rows}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={v.onBlur}
         maxLength={max}
-        className="field resize-y"
+        aria-invalid={!!v.error}
+        className={`field resize-y ${v.invalid}`}
       />
     </Field>
   );
@@ -855,24 +1101,30 @@ function Password({
   value,
   onChange,
   saved,
+  vkey,
 }: {
   value: string;
   onChange: (value: string) => void;
   saved: boolean;
+  vkey?: string;
 }) {
   const id = useId();
   const [show, setShow] = useState(false);
+  const v = useValidation(vkey);
   return (
-    <Field id={id} label="Password">
+    <Field id={id} label="Password" error={v.error}>
       <div className="relative">
         <input
           id={id}
           type={show ? "text" : "password"}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={v.onBlur}
           autoComplete="new-password"
           placeholder={saved ? "Saved — type to change" : ""}
-          className="field pr-9"
+          maxLength={200}
+          aria-invalid={!!v.error}
+          className={`field pr-9 ${v.invalid}`}
         />
         <button
           type="button"

@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { ExternalLinkIcon, MoreHorizontalIcon, SearchIcon } from "lucide-react";
 import { toast } from "sonner";
 import { AppPreviewSheet } from "@/components/AppPreviewRow";
+import type { AppImages } from "@/lib/appImages";
+import { DrawerPublishButton } from "@/components/PublishPanel";
 import { StatusMenuItems } from "@/components/RowActions";
 import { StatusGlyph } from "@/components/StatusGlyph";
 import { ProjectLogo } from "@/components/ProjectLogo";
@@ -29,7 +31,15 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PIPELINE_ORDER, PLATFORMS, STATUSES, daysSince, isStale } from "@/lib/constants";
 import { setAppStatus } from "@/lib/actions";
-import type { AppRow, AppStatus, Keystore, LineBadge, TeamMember } from "@/lib/types";
+import type {
+  AppRow,
+  AppStatus,
+  Client,
+  Keystore,
+  LineBadge,
+  Product,
+  TeamMember,
+} from "@/lib/types";
 
 /** Live apps pile up forever; by default the column shows only recent ones. */
 const RECENT_LIVE_DAYS = 14;
@@ -65,6 +75,8 @@ export function StatusBoard({
   keystores,
   meId,
   badges,
+  images = {},
+  publishing = {},
 }: {
   rows: AppRow[];
   team: TeamMember[];
@@ -73,6 +85,10 @@ export function StatusBoard({
   meId: string | null;
   /** project name -> product line logo */
   badges: Record<string, LineBadge>;
+  /** product id -> the client's image links */
+  images?: Record<string, AppImages>;
+  /** product id -> what the drawer's Publish needs: the client and the app */
+  publishing?: Record<string, { client: Client; product: Product }>;
 }) {
   const router = useRouter();
   const [, start] = useTransition();
@@ -418,6 +434,18 @@ export function StatusBoard({
           }`}
           assigneeName={preview.assignee_name}
           keystore={(preview.keystore_id && keystoreById.get(preview.keystore_id)) || null}
+          images={images[preview.product_id] ?? null}
+          publish={
+            publishing[preview.product_id] && !publishing[preview.product_id].product.archived ? (
+              <DrawerPublishButton
+                client={publishing[preview.product_id].client}
+                product={publishing[preview.product_id].product}
+                platform={preview.platform}
+                accountName={preview.account_name}
+                badge={badges[preview.project_name]}
+              />
+            ) : null
+          }
         />
       )}
     </>

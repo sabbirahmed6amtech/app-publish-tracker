@@ -10,6 +10,16 @@ import {
   suggestNextVersion,
 } from "@/lib/constants";
 import type { AccountType, AppStatus, Platform } from "@/lib/types";
+import {
+  check,
+  isEmail,
+  isEmailOrPhone,
+  isName,
+  isPhone,
+  isUrl,
+  max,
+  type Rule,
+} from "@/lib/validate";
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
 
@@ -569,6 +579,9 @@ export async function saveProductListing(fd: FormData): Promise<ActionResult> {
     "ios_primary_category",
     "ios_secondary_category",
     "ios_copyright",
+    "icon_url",
+    "screenshots_url",
+    "feature_graphic_url",
   ];
   const update = Object.fromEntries(
     fields.filter((f) => fd.has(f)).map((f) => [f, nullable(fd, f)]),
@@ -1247,7 +1260,12 @@ const INTAKE_APP_FIELDS = [
   "demo_login",
   "demo_password",
   "demo_details",
+  "icon_url",
+  "screenshots_url",
+  "feature_graphic_url",
+  "client_note",
 ] as const;
+
 
 // The client's store accounts: name, type and how the team gets in.
 const INTAKE_ACCOUNT_FIELDS = [
@@ -1258,18 +1276,52 @@ const INTAKE_ACCOUNT_FIELDS = [
   "login_password",
 ] as const;
 
-const URL_FIELDS = new Set([
-  "play_privacy_url",
-  "play_delete_account_url",
-  "play_website",
-  "store_support_url",
-  "store_marketing_url",
-]);
-const EMAIL_FIELDS = new Set(["play_contact_email", "play_listing_email", "review_contact_email"]);
+/** What each field the client can send must look like (see lib/validate). */
+const INTAKE_RULES: Record<string, Rule[]> = {
+  play_privacy_url: [max(300), isUrl],
+  play_delete_account_url: [max(300), isUrl],
+  play_website: [max(300), isUrl],
+  store_support_url: [max(300), isUrl],
+  store_marketing_url: [max(300), isUrl],
+  play_contact_email: [max(100), isEmail],
+  play_listing_email: [max(100), isEmail],
+  review_contact_email: [max(100), isEmail],
+  play_contact_phone: [max(30), isPhone],
+  review_contact_phone: [max(30), isPhone],
+  review_contact_first_name: [max(60), isName],
+  review_contact_last_name: [max(60), isName],
+  play_default_language: [max(100)],
+  app_name: [max(Math.min(PLAY_LIMITS.appName, APP_STORE_LIMITS.appName))],
+  short_description: [max(PLAY_LIMITS.shortDescription)],
+  long_description: [max(PLAY_LIMITS.longDescription)],
+  demo_login: [max(100), isEmailOrPhone],
+  demo_password: [max(200)],
+  demo_details: [max(500)],
+  icon_url: [max(500), isUrl],
+  screenshots_url: [max(500), isUrl],
+  feature_graphic_url: [max(500), isUrl],
+  client_note: [max(500)],
+  account_name: [max(100)],
+  access_email: [max(100), isEmail],
+  login_password: [max(200)],
+};
+
+/** The first field that breaks its rule, as a message naming it. */
+function intakeProblem(fields: Record<string, string | undefined>, owner?: string): string | null {
+  for (const [key, value] of Object.entries(fields)) {
+    const problem = check(value ?? "", ...(INTAKE_RULES[key] ?? []));
+    if (problem) {
+      const label = key.replace(/_url$/, "").replace(/_/g, " ");
+      return `${owner ? `${owner} — ` : ""}${label}: ${problem}`;
+    }
+  }
+  return null;
+}
 
 /**
  * The client's own submission from the intake form — no login; the link's
- * token is checked by the database, which saves only these fields.
+ * token is checked by the database, which saves only these fields. The same
+ * rules as the form are checked again here, so nothing skips them.
  */
 export async function submitIntake(
   token: string,
@@ -1283,35 +1335,27 @@ export async function submitIntake(
     ) as Partial<Record<K, string>>;
 
   const clientData = pick(client, INTAKE_CLIENT_FIELDS);
-  for (const [key, value] of Object.entries(clientData)) {
-    if (!value) continue;
-    if (URL_FIELDS.has(key) && !/^https?:\/\/\S+\.\S+/i.test(value)) {
-      return { ok: false, error: `"${value}" isn't a full web address — start it with https://` };
-    }
-    if (EMAIL_FIELDS.has(key) && !/^\S+@\S+\.\S+$/.test(value)) {
-      return { ok: false, error: `"${value}" isn't an email address.` };
-    }
-  }
+  const clientProblem = intakeProblem(clientData);
+  if (clientProblem) return { ok: false, error: clientProblem };
 
   const appData = [];
   for (const app of apps) {
     const fields = pick(app, INTAKE_APP_FIELDS);
-    const name = fields.app_name || "An app";
-    const over = (v: string | undefined, max: number) => (v ?? "").length > max;
-    if (over(fields.app_name, PLAY_LIMITS.appName))
-      return { ok: false, error: `${name}: the app name is over ${PLAY_LIMITS.appName} characters.` };
-    if (over(fields.short_description, PLAY_LIMITS.shortDescription))
-      return { ok: false, error: `${name}: the short description is over ${PLAY_LIMITS.shortDescription} characters.` };
-    if (over(fields.long_description, PLAY_LIMITS.longDescription))
-      return { ok: false, error: `${name}: the description is over ${PLAY_LIMITS.longDescription} characters.` };
+    const problem = intakeProblem(fields, fields.app_name || "An app");
+    if (problem) return { ok: false, error: problem };
     appData.push({ id: String(app.id), ...fields });
   }
 
   const accountData = [];
   for (const account of accounts) {
     const fields = pick(account, INTAKE_ACCOUNT_FIELDS);
-    if (fields.access_email && !/^\S+@\S+$/.test(fields.access_email)) {
-      return { ok: false, error: `"${fields.access_email}" isn't an email address.` };
+    const problem = intakeProblem(fields, fields.account_name || "A store account");
+    if (problem) return { ok: false, error: problem };
+    if (fields.account_type && !["organization", "personal"].includes(fields.account_type)) {
+      return { ok: false, error: "Pick Organization or Personal for each store account." };
+    }
+    if (fields.access_method && !["invite", "login"].includes(fields.access_method)) {
+      return { ok: false, error: "Pick how we'll get access to each store account." };
     }
     accountData.push({ id: String(account.id), ...fields });
   }

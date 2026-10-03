@@ -130,6 +130,9 @@ export type Product = {
   publishing_countries: string | null;
   feature_graphic_url: string | null;
   screenshots_url: string | null;
+  icon_url: string | null;
+  /** The client's own note from the intake form; `note` stays the team's. */
+  client_note: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -283,6 +286,8 @@ export type IntakeApp = {
   publishing_countries: string | null;
   feature_graphic_url: string | null;
   screenshots_url: string | null;
+  icon_url: string | null;
+  client_note: string | null;
   line: string | null;
   logo: string | null;
 };
