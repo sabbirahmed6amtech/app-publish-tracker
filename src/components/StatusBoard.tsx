@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLinkIcon, MoreHorizontalIcon, SearchIcon } from "lucide-react";
+import { ChevronRightIcon, ExternalLinkIcon, MoreHorizontalIcon, SearchIcon } from "lucide-react";
 import { toast } from "sonner";
 import { AppPreviewSheet } from "@/components/AppPreviewRow";
 import { StatusMenuItems } from "@/components/RowActions";
@@ -85,6 +85,15 @@ export function StatusBoard({
   const [dragId, setDragId] = useState<string | null>(null);
   const [overColumn, setOverColumn] = useState<AppStatus | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
+  // Open client groups, by "status:clientId". Groups start closed.
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const toggle = (key: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   // Fresh server data supersedes optimistic moves.
   useEffect(() => setMoved({}), [rows]);
@@ -349,41 +358,53 @@ export function StatusBoard({
                 </header>
 
                 <div className="flex flex-1 flex-col gap-3 px-2 pb-2">
-                  {groupByClient(cards).map((group) => (
-                    <div key={group.clientId} className="space-y-1.5">
-                      <div className="flex items-center gap-1.5 px-1 pt-1">
-                        <span className="truncate text-[11px] font-semibold">
-                          {group.clientName}
-                        </span>
-                        <span className="font-mono text-[10px] text-muted-foreground">
-                          #{group.ticket}
-                        </span>
-                        <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
-                          {group.rows.length}
-                        </span>
-                      </div>
-                      {group.rows.map((r) => (
-                        <BoardCard
-                          key={r.id}
-                          row={r}
-                          badge={badges[r.project_name]}
-                          status={statusOf(r)}
-                          dragging={dragId === r.id}
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData("text/plain", r.id);
-                            e.dataTransfer.effectAllowed = "move";
-                            setDragId(r.id);
-                          }}
-                          onDragEnd={() => {
-                            setDragId(null);
-                            setOverColumn(null);
-                          }}
-                          onOpen={() => setPreviewId(r.id)}
-                          onMove={(to) => move(r, to)}
-                        />
-                      ))}
-                    </div>
-                  ))}
+                  {groupByClient(cards).map((group) => {
+                    const key = `${status}:${group.clientId}`;
+                    const card = (r: AppRow) => (
+                      <BoardCard
+                        key={r.id}
+                        row={r}
+                        badge={badges[r.project_name]}
+                        status={statusOf(r)}
+                        dragging={dragId === r.id}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", r.id);
+                          e.dataTransfer.effectAllowed = "move";
+                          setDragId(r.id);
+                        }}
+                        onDragEnd={() => {
+                          setDragId(null);
+                          setOverColumn(null);
+                        }}
+                        onOpen={() => setPreviewId(r.id)}
+                        onMove={(to) => move(r, to)}
+                      />
+                    );
+                    // One app needs no group around it.
+                    if (group.rows.length === 1) {
+                      return (
+                        <div key={group.clientId} className="space-y-1.5">
+                          <GroupLabel group={group} />
+                          {card(group.rows[0])}
+                        </div>
+                      );
+                    }
+                    // A search shows its matches without a click.
+                    const expanded = open.has(key) || !!filters.q.trim();
+                    return (
+                      <ClientGroup
+                        key={group.clientId}
+                        group={group}
+                        status={status}
+                        statusOf={statusOf}
+                        badges={badges}
+                        expanded={expanded}
+                        onToggle={() => toggle(key)}
+                      >
+                        {group.rows.map(card)}
+                      </ClientGroup>
+                    );
+                  })}
 
                   {cards.length === 0 && (
                     <p className="px-3 py-6 text-center text-[12px] text-muted-foreground">
@@ -556,6 +577,182 @@ function groupByClient(rows: AppRow[]) {
     }
   }
   return [...groups.values()];
+}
+
+type Group = ReturnType<typeof groupByClient>[number];
+
+function GroupLabel({ group }: { group: Group }) {
+  return (
+    <div className="flex items-center gap-1.5 px-1 pt-1">
+      <span className="truncate text-[11px] font-semibold">{group.clientName}</span>
+      <span className="font-mono text-[10px] text-muted-foreground">#{group.ticket}</span>
+    </div>
+  );
+}
+
+/** The cards peeking out behind a folded stack: offset, smaller, fainter, blurrier. */
+const STACK_LAYERS = [
+  "translate-y-[7px] scale-x-[0.94] opacity-80 blur-[0.6px] group-hover/stack:translate-y-[10px]",
+  "translate-y-[14px] scale-x-[0.88] opacity-50 blur-[1.2px] group-hover/stack:translate-y-[19px]",
+];
+const PEEK = 7;
+const EASE = "ease-[cubic-bezier(0.22,1,0.36,1)]";
+
+/**
+ * A client's apps in one column, folded into a stack of cards: the top one
+ * says who it is, which products and stores, how long the oldest has waited
+ * and who's on it; the ones behind show there are more. Clicking spreads the
+ * stack — the back cards sink away and the apps slide out from under the top
+ * card one by one; folding plays it in reverse.
+ */
+function ClientGroup({
+  group,
+  status,
+  statusOf,
+  badges,
+  expanded,
+  onToggle,
+  children,
+}: {
+  group: Group;
+  status: AppStatus;
+  statusOf: (r: AppRow) => AppStatus;
+  badges: Record<string, LineBadge>;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode[];
+}) {
+  const projects = [...new Set(group.rows.map((r) => r.project_name))];
+  const stores = [...new Set(group.rows.map((r) => r.platform))];
+  const people = [...new Set(group.rows.map((r) => r.assignee_name ?? ""))];
+  const oldest = Math.max(...group.rows.map((r) => daysSince(r.status_changed_at)));
+  const stale = group.rows.some((r) => isStale(statusOf(r), r.status_changed_at));
+  const layers = STACK_LAYERS.slice(0, Math.min(group.rows.length - 1, STACK_LAYERS.length));
+  const count = children.length;
+  const peek = expanded ? 0 : layers.length * PEEK;
+
+  return (
+    <div className="group/stack">
+      <div
+        className={`relative isolate transition-[padding] duration-300 ${EASE}`}
+        style={{ paddingBottom: peek }}
+      >
+        {/* the cards behind; they sink under the top card as the stack opens */}
+        {layers.map((cls, i) => (
+          <div
+            key={i}
+            aria-hidden
+            className={`pointer-events-none absolute inset-x-0 top-0 rounded-lg border border-foreground/15 bg-card shadow-sm transition-all duration-300 ${EASE} ${
+              expanded ? "translate-y-0 scale-x-[0.8] opacity-0 blur-sm" : cls
+            }`}
+            style={{ bottom: peek, zIndex: -1 - i }}
+          />
+        ))}
+
+        {/* the top card: the client's summary, which stays as the header when open */}
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-label={`${group.clientName}: ${group.rows.length} apps — ${expanded ? "fold" : "show them"}`}
+          className={`relative z-10 flex w-full flex-col rounded-lg border bg-card p-2.5 text-left outline-none transition-all duration-300 ${EASE} hover:border-ring/60 focus-visible:ring-2 focus-visible:ring-ring ${
+            expanded ? "shadow-xs" : "shadow-sm hover:shadow-md"
+          }`}
+          style={{ borderLeftColor: STATUSES[status].hex, borderLeftWidth: 3 }}
+        >
+          <span className="flex w-full items-center gap-1.5">
+            <span className="truncate text-[13px] font-semibold">{group.clientName}</span>
+            <span className="font-mono text-[10px] text-muted-foreground">#{group.ticket}</span>
+            <span className="ml-auto flex items-center gap-0.5 rounded-full bg-muted px-1.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+              {expanded ? "Fold" : `${group.rows.length} apps`}
+              <ChevronRightIcon
+                className={`size-3 transition-transform duration-300 ${expanded ? "-rotate-90" : "rotate-90"}`}
+              />
+            </span>
+          </span>
+
+          {/* the summary line folds away when open — the cards say it all */}
+          <span
+            className={`grid w-full transition-[grid-template-rows,opacity] duration-300 ${EASE} ${
+              expanded ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100"
+            }`}
+          >
+            <span className="min-h-0 overflow-hidden">
+              <span className="flex w-full items-center gap-1.5 pt-2">
+                <span className="flex -space-x-1.5">
+                  {projects.slice(0, 4).map((p) => (
+                    <span key={p} className="rounded ring-2 ring-card">
+                      <ProjectLogo badge={badges[p]} project={p} size="xs" />
+                    </span>
+                  ))}
+                </span>
+                {projects.length > 4 && (
+                  <span className="text-[11px] text-muted-foreground">+{projects.length - 4}</span>
+                )}
+                <span className="flex items-center gap-1 pl-1">
+                  {stores.map((s) => (
+                    <StoreIcon key={s} platform={s} size={13} />
+                  ))}
+                </span>
+                <span
+                  className={`ml-auto text-[11px] tabular-nums ${
+                    stale ? "font-semibold text-warn" : "text-muted-foreground"
+                  }`}
+                  title={`Oldest has waited ${oldest} days in ${STATUSES[status].label}`}
+                >
+                  {oldest}d
+                </span>
+                <span className="flex -space-x-1">
+                  {people.slice(0, 3).map((name) => (
+                    <span
+                      key={name || "none"}
+                      title={name || "Unassigned"}
+                      className={`grid size-5 place-items-center rounded-full text-[9px] font-semibold uppercase ring-2 ring-card ${
+                        name
+                          ? "bg-primary text-primary-foreground"
+                          : "border border-dashed bg-card text-muted-foreground"
+                      }`}
+                    >
+                      {name ? initials(name) : "?"}
+                    </span>
+                  ))}
+                </span>
+              </span>
+            </span>
+          </span>
+        </button>
+      </div>
+
+      {/* the apps: the space opens while each card slides out from under the top one */}
+      <div
+        inert={!expanded}
+        className={`grid transition-[grid-template-rows] duration-300 ${EASE} ${
+          expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="-mx-1 min-h-0 overflow-hidden px-1">
+          <div className="space-y-1.5 pb-1 pt-1.5">
+            {children.map((child, i) => (
+              <div
+                key={i}
+                className={`transition-all duration-300 ${EASE} ${
+                  expanded
+                    ? "translate-y-0 scale-100 opacity-100 blur-0"
+                    : "-translate-y-6 scale-95 opacity-0 blur-[2px]"
+                }`}
+                // Open top to bottom; fold bottom to top.
+                style={{
+                  transitionDelay: `${(expanded ? i : count - 1 - i) * 40}ms`,
+                }}
+              >
+                {child}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 type Option = { value: string; label: string } | "---";
