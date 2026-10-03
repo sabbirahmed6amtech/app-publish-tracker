@@ -25,6 +25,21 @@ export type Client = {
   name: string;
   note: string | null;
   archived: boolean;
+  /** Play Console details shared by every app of this client. */
+  play_privacy_url: string | null;
+  play_delete_account_url: string | null;
+  play_contact_email: string | null;
+  play_listing_email: string | null;
+  play_contact_phone: string | null;
+  play_website: string | null;
+  play_default_language: string | null;
+  /** App Store Connect details shared by every App Store app of this client. */
+  store_support_url: string | null;
+  store_marketing_url: string | null;
+  review_contact_first_name: string | null;
+  review_contact_last_name: string | null;
+  review_contact_phone: string | null;
+  review_contact_email: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -66,6 +81,23 @@ export type Product = {
   note: string | null;
   sort_order: number;
   archived: boolean;
+  /** What Play Console needs for this app. */
+  package_name: string | null;
+  play_category: string | null;
+  short_description: string | null;
+  long_description: string | null;
+  demo_instructions: string | null;
+  demo_login: string | null;
+  demo_password: string | null;
+  demo_details: string | null;
+  /** App Store Connect listing; package_name holds the bundle ID. */
+  ios_sku: string | null;
+  ios_subtitle: string | null;
+  ios_keywords: string | null;
+  ios_promo_text: string | null;
+  ios_primary_category: string | null;
+  ios_secondary_category: string | null;
+  ios_copyright: string | null;
   created_at: string;
   updated_at: string;
 };

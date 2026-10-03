@@ -103,6 +103,57 @@ export const ACCOUNT_TYPES: Record<AccountType, { label: string }> = {
   personal: { label: "Personal" },
 };
 
+/**
+ * Play Console's app categories, spelled exactly as the console shows them —
+ * the publisher extension picks the option by its exact text.
+ */
+export const PLAY_CATEGORIES = [
+  "Art & Design", "Auto & Vehicles", "Beauty", "Books & Reference", "Business", "Comics",
+  "Communication", "Dating", "Education", "Entertainment", "Events", "Finance", "Food & Drink",
+  "Health & Fitness", "House & Home", "Libraries & Demo", "Lifestyle", "Maps & Navigation",
+  "Medical", "Music & Audio", "News & Magazines", "Parenting", "Personalization",
+  "Photography", "Productivity", "Shopping", "Social", "Sports", "Tools", "Travel & Local",
+  "Video Players & Editors", "Weather",
+];
+
+/** Common default languages, in Play Console's exact "Name – code" form. */
+export const PLAY_LANGUAGES = [
+  "English (United Kingdom) – en-GB",
+  "English (United States) – en-US",
+  "Arabic – ar",
+  "Bangla – bn-BD",
+  "French (France) – fr-FR",
+  "German – de-DE",
+  "Hindi – hi-IN",
+  "Indonesian – id",
+  "Portuguese (Brazil) – pt-BR",
+  "Spanish (Latin America) – es-419",
+  "Spanish (Spain) – es-ES",
+  "Spanish (United States) – es-US",
+  "Turkish – tr-TR",
+];
+
+/** App Store Connect's categories, spelled as it shows them. */
+export const APP_STORE_CATEGORIES = [
+  "Books", "Business", "Developer Tools", "Education", "Entertainment", "Finance",
+  "Food & Drink", "Games", "Graphics & Design", "Health & Fitness", "Kids", "Lifestyle",
+  "Magazines & Newspapers", "Medical", "Music", "Navigation", "News", "Photo & Video",
+  "Productivity", "Reference", "Shopping", "Social Networking", "Sports", "Travel",
+  "Utilities", "Weather",
+];
+
+/** App Store Connect's length limits. */
+export const APP_STORE_LIMITS = {
+  appName: 30,
+  subtitle: 30,
+  keywords: 100,
+  promoText: 170,
+  description: 4000,
+};
+
+/** Play Console's length limits for the store listing. */
+export const PLAY_LIMITS = { appName: 30, shortDescription: 80, longDescription: 4000 };
+
 /** How many days in a non-terminal status before we flag it as stale. */
 export const STALE_AFTER_DAYS = 7;
 

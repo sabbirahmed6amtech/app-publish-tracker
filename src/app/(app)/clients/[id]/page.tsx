@@ -17,6 +17,15 @@ import { AccountDialog } from "@/components/dialogs/AccountDialog";
 import { ReleaseDialog } from "@/components/dialogs/ReleaseDialog";
 import { KeystoreDialog } from "@/components/dialogs/KeystoreDialog";
 import { ProductDialog } from "@/components/dialogs/ProductDialog";
+import { ListingDialog } from "@/components/dialogs/ListingDialog";
+import { ClientPlayDialog } from "@/components/dialogs/ClientPlayDialog";
+import { PublishPanel } from "@/components/PublishPanel";
+import {
+  publishChecks,
+  publishChecksIos,
+  publishData,
+  publishDataIos,
+} from "@/lib/publish";
 import {
   getClient,
   activeMembers,
@@ -374,6 +383,35 @@ function AppsTab({
                             trigger="Edit"
                             className="btn btn-ghost h-7 px-2"
                           />
+                          {!p.archived && (
+                            <>
+                              <ListingDialog
+                                product={p}
+                                platform={group.platform}
+                                trigger={
+                                  <span className="inline-flex items-center gap-1.5">
+                                    Listing
+                                    {(group.platform === "app_store"
+                                      ? publishChecksIos(publishDataIos(client, p))
+                                      : publishChecks(publishData(client, p))
+                                    ).some((c) => !c.ok) && (
+                                      <span
+                                        className="size-1.5 rounded-full bg-[var(--st-in-review)]"
+                                        title="Some store details are missing"
+                                      />
+                                    )}
+                                  </span>
+                                }
+                              />
+                              <PublishPanel
+                                client={client}
+                                product={p}
+                                platform={group.platform}
+                                badge={badges[p.project_name]}
+                                accountName={accountById.get(p.account_id)?.account_name ?? ""}
+                              />
+                            </>
+                          )}
                           <ArchiveToggle productId={p.id} archived={p.archived} />
                           {count === 0 && (
                             <DeleteButton
@@ -460,8 +498,74 @@ function CredentialsTab({ client }: { client: ClientFull }) {
   }
   const totalSubmissions = client.releases.reduce((n, r) => n + r.apps.length, 0);
 
+  // Shared by every Play Store app; the publisher fills these into Play Console.
+  const playDetails: [string, string | null][] = [
+    ["Privacy policy", client.play_privacy_url],
+    ["Delete account", client.play_delete_account_url],
+    ["Contact email", client.play_contact_email],
+    ["Listing email", client.play_listing_email],
+    ["Phone", client.play_contact_phone],
+    ["Website", client.play_website],
+    ["Default language", client.play_default_language],
+  ];
+  const reviewContact = [client.review_contact_first_name, client.review_contact_last_name]
+    .filter(Boolean)
+    .join(" ");
+  const iosDetails: [string, string | null][] = [
+    ["Support URL", client.store_support_url],
+    ["Marketing URL", client.store_marketing_url],
+    ["Review contact", reviewContact || null],
+    ["Review phone", client.review_contact_phone],
+    ["Review email", client.review_contact_email],
+  ];
+  const detailRows = (rows: [string, string | null][]) =>
+    rows.map(([label, value]) => (
+      <div key={label} className="flex min-w-0 items-center gap-2">
+        <dt className="w-28 shrink-0 text-[12px] text-muted-foreground">{label}</dt>
+        <dd className="flex min-w-0 items-center gap-1">
+          {value ? (
+            <>
+              <span className="truncate">{value}</span>
+              <CopyButton value={value} label={`Copy ${label.toLowerCase()}`} />
+            </>
+          ) : (
+            <span className="text-muted-foreground/60">Not set</span>
+          )}
+        </dd>
+      </div>
+    ));
+
   return (
     <div className="space-y-4">
+      <section className="card overflow-hidden">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div>
+            <h2 className="text-[14px] font-semibold">Store details</h2>
+            <p className="text-[12px] text-muted-foreground">
+              Shared by every app of this client — the publisher fills these into each store.
+            </p>
+          </div>
+          <ClientPlayDialog client={client} />
+        </div>
+        <div className="grid gap-x-8 md:grid-cols-2">
+          <div className="px-4 py-3">
+            <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold">
+              <StoreIcon platform="play_store" size={13} /> Play Store
+            </h3>
+            <dl className="space-y-2 text-[13px]">{detailRows(playDetails)}</dl>
+          </div>
+          <div className="border-t px-4 py-3 md:border-t-0 md:border-l">
+            <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold">
+              <StoreIcon platform="app_store" size={13} /> App Store
+            </h3>
+            <dl className="space-y-2 text-[13px]">{detailRows(iosDetails)}</dl>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              The privacy policy URL is shared with Play.
+            </p>
+          </div>
+        </div>
+      </section>
+
       <section className="card overflow-hidden">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div>

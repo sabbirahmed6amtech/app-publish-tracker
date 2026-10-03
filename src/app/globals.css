@@ -200,6 +200,94 @@ body {
   }
 }
 
+/*
+ * Publish panel: ticks pop, the rocket lifts on hover and launches on start,
+ * the waiting card breathes, and a short confetti burst marks a full run.
+ */
+@keyframes pub-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.15);
+  }
+}
+
+@keyframes pub-launch {
+  0% {
+    transform: translate(0, 0) rotate(0);
+  }
+  30% {
+    transform: translate(-1px, 2px) rotate(-6deg);
+  }
+  100% {
+    transform: translate(18px, -28px) rotate(8deg);
+    opacity: 0;
+  }
+}
+
+@keyframes pub-attention {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--st-in-review) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in oklch, var(--st-in-review) 0%, transparent);
+  }
+}
+
+@keyframes pub-confetti {
+  0% {
+    transform: translate(0, 0) rotate(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot));
+    opacity: 0;
+  }
+}
+
+@keyframes pub-shine {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(220%);
+  }
+}
+
+.pub-pop {
+  animation: pub-pop 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+}
+.pub-launch {
+  animation: pub-launch 0.7s cubic-bezier(0.5, 0, 0.7, 0.3) forwards;
+}
+.pub-attention {
+  animation: pub-attention 1.8s ease-in-out infinite;
+}
+.pub-confetti {
+  animation: pub-confetti 1.4s cubic-bezier(0.2, 0.7, 0.4, 1) forwards;
+}
+.pub-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.28), transparent);
+  animation: pub-shine 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pub-pop,
+  .pub-launch,
+  .pub-attention,
+  .pub-confetti,
+  .pub-shine::after {
+    animation: none;
+  }
+}
+
 /* Skeletons: a quiet base with a light sweep across it. */
 @keyframes skeleton-sweep {
   100% {

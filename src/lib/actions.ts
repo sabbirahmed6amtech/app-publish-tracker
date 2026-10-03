@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient as db } from "@/lib/supabase/server";
-import { bumpBuild, suggestNextVersion } from "@/lib/constants";
+import {
+  APP_STORE_LIMITS,
+  PLAY_LIMITS,
+  bumpBuild,
+  suggestNextVersion,
+} from "@/lib/constants";
 import type { AccountType, AppStatus, Platform } from "@/lib/types";
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
@@ -491,6 +496,89 @@ function duplicateProduct(error: { code?: string; message: string }) {
   return error.code === "23505"
     ? "That project already exists on this store for this client."
     : error.message;
+}
+
+/** The Play Console details shared by every app of a client. */
+export async function saveClientPlayDetails(fd: FormData): Promise<ActionResult> {
+  const id = str(fd, "id");
+  // Only what this form sent: the Play and App Store forms show different
+  // fields, and saving one must not wipe the other's.
+  const fields = [
+    "play_privacy_url",
+    "play_delete_account_url",
+    "play_contact_email",
+    "play_listing_email",
+    "play_contact_phone",
+    "play_website",
+    "play_default_language",
+    "store_support_url",
+    "store_marketing_url",
+    "review_contact_first_name",
+    "review_contact_last_name",
+    "review_contact_phone",
+    "review_contact_email",
+  ];
+  const update = Object.fromEntries(
+    fields.filter((f) => fd.has(f)).map((f) => [f, nullable(fd, f)]),
+  );
+  const supabase = await db();
+  const { error } = await supabase.from("clients").update(update).eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true, id };
+}
+
+/** One app's Play Console listing and App Review login. */
+export async function saveProductListing(fd: FormData): Promise<ActionResult> {
+  const id = str(fd, "id");
+  const tooLong = (field: string, limit: number, label: string) => {
+    const v = nullable(fd, field);
+    return v && v.length > limit ? `The ${label} is over ${limit} characters.` : null;
+  };
+  const problem =
+    tooLong("short_description", PLAY_LIMITS.shortDescription, "short description") ||
+    tooLong("long_description", PLAY_LIMITS.longDescription, "full description") ||
+    tooLong("ios_subtitle", APP_STORE_LIMITS.subtitle, "subtitle") ||
+    tooLong("ios_keywords", APP_STORE_LIMITS.keywords, "keywords list") ||
+    tooLong("ios_promo_text", APP_STORE_LIMITS.promoText, "promotional text");
+  if (problem) return { ok: false, error: problem };
+
+  const packageName = nullable(fd, "package_name");
+  if (packageName && !/^[a-zA-Z][\w-]*(\.[a-zA-Z][\w-]*)+$/.test(packageName)) {
+    return {
+      ok: false,
+      error: "That doesn't look like a package name or bundle ID (e.g. com.client.app).",
+    };
+  }
+
+  // Only what this form sent: the Play and App Store listings show different
+  // fields, and saving one must not wipe the other's.
+  const fields = [
+    "package_name",
+    "play_category",
+    "short_description",
+    "long_description",
+    "demo_instructions",
+    "demo_login",
+    "demo_password",
+    "demo_details",
+    "ios_sku",
+    "ios_subtitle",
+    "ios_keywords",
+    "ios_promo_text",
+    "ios_primary_category",
+    "ios_secondary_category",
+    "ios_copyright",
+  ];
+  const update = Object.fromEntries(
+    fields.filter((f) => fd.has(f)).map((f) => [f, nullable(fd, f)]),
+  );
+
+  const supabase = await db();
+  const { error } = await supabase.from("products").update(update).eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true, id };
 }
 
 /** Archived apps stay in history but aren't submitted in new releases. */

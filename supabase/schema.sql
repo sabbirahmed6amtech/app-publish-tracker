@@ -52,6 +52,21 @@ create table clients (
   name        text not null,
   note        text,
   archived    boolean not null default false,
+  -- Play Console details shared by every app of this client (see 009).
+  play_privacy_url        text,
+  play_delete_account_url text,
+  play_contact_email      text,
+  play_listing_email      text,
+  play_contact_phone      text,
+  play_website            text,
+  play_default_language   text,
+  -- App Store Connect details shared by its apps (see 010).
+  store_support_url          text,
+  store_marketing_url        text,
+  review_contact_first_name  text,
+  review_contact_last_name   text,
+  review_contact_phone       text,
+  review_contact_email       text,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
@@ -128,6 +143,24 @@ create table products (
   note         text,
   sort_order   integer not null default 0,
   archived     boolean not null default false, -- left out of new releases
+  -- What Play Console needs for this app (see 009). The demo login is for
+  -- App Review and, like keystore passwords, is team-only.
+  package_name      text,                      -- applicationId; never changes once published
+  play_category     text,
+  short_description text,                      -- Play limit: 80 characters
+  long_description  text,                      -- Play limit: 4000 characters
+  demo_instructions text,
+  demo_login        text,
+  demo_password     text,
+  demo_details      text,
+  -- App Store Connect (see 010). package_name holds the bundle ID.
+  ios_sku                text,
+  ios_subtitle           text,                 -- limit: 30 characters
+  ios_keywords           text,                 -- limit: 100 characters
+  ios_promo_text         text,                 -- limit: 170 characters
+  ios_primary_category   text,
+  ios_secondary_category text,
+  ios_copyright          text,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
   unique (account_id, project_name)
