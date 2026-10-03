@@ -4,7 +4,13 @@ import type { Client, Product } from "./types";
  * Exactly what the "Play Console Publisher" extension fills in — the same
  * shape as its popup form (and the Node bot's publisher-data.json).
  */
+/** A first publish creates the app; an update adds a release to a live one. */
+export type PublishMode = "publish" | "update";
+
 export type PublishAppData = {
+  mode?: PublishMode;
+  /** The release's version, for an update. */
+  version?: string;
   appName: string;
   packageName: string;
   defaultLanguage: string;
@@ -86,6 +92,9 @@ export function publishChecks(data: PublishAppData): PublishCheck[] {
 /** What the extension fills into App Store Connect for one App Store app. */
 export type PublishAppDataIos = {
   platform: "app_store";
+  mode?: PublishMode;
+  /** The release's version, for an update — the App Store version to create. */
+  version?: string;
   appName: string;
   bundleId: string;
   sku: string;
@@ -192,4 +201,34 @@ export function publishChecksIos(data: PublishAppDataIos): PublishCheck[] {
       required: false,
     },
   ];
+}
+
+/**
+ * Publishing creates the app in the store, so it's only for an app that has
+ * never reached production. Once it has, later releases are store updates.
+ */
+export function isFirstPublish(product: { id: string }, everLive: ReadonlySet<string>): boolean {
+  return !everLive.has(product.id);
+}
+
+/** The apps (products) that have been live in any release. */
+export function everLiveProducts(apps: { product_id: string; status: string }[]): Set<string> {
+  return new Set(apps.filter((a) => a.status === "production").map((a) => a.product_id));
+}
+
+/** What an update needs: only to find the app (and, on the App Store, the version). */
+export function updateChecks(
+  data: PublishAppData | PublishAppDataIos,
+  platform: "play_store" | "app_store",
+): PublishCheck[] {
+  const has = (x?: string) => !!x && x.trim().length > 0;
+  if (platform === "app_store") {
+    const d = data as PublishAppDataIos;
+    return [
+      { label: "App name", where: "app", ok: has(d.appName), required: true },
+      { label: "Version", where: "app", ok: has(d.version), required: true },
+    ];
+  }
+  const d = data as PublishAppData;
+  return [{ label: "Package name", where: "app", ok: has(d.packageName), required: true }];
 }

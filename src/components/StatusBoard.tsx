@@ -88,7 +88,7 @@ export function StatusBoard({
   /** product id -> the client's image links */
   images?: Record<string, AppImages>;
   /** product id -> what the drawer's Publish needs: the client and the app */
-  publishing?: Record<string, { client: Client; product: Product }>;
+  publishing?: Record<string, { client: Client; product: Product; update: boolean }>;
 }) {
   const router = useRouter();
   const [, start] = useTransition();
@@ -443,6 +443,8 @@ export function StatusBoard({
                 platform={preview.platform}
                 accountName={preview.account_name}
                 badge={badges[preview.project_name]}
+                mode={publishing[preview.product_id].update ? "update" : "publish"}
+                version={preview.release_version}
               />
             ) : null
           }

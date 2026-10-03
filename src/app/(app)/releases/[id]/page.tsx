@@ -33,7 +33,7 @@ export default async function ReleasePage({
   ]);
   if (!detail) notFound();
 
-  const { release, client, accounts, keystores, products, siblings } = detail;
+  const { release, client, accounts, keystores, products, siblings, everLive } = detail;
   const apps = release.apps;
   const accountPlatform = new Map(accounts.map((a) => [a.id, a.platform]));
   const timelineApps = new Map<string, TimelineApp>(
@@ -83,6 +83,7 @@ export default async function ReleasePage({
         keystores={keystores}
         products={products}
         siblings={siblings}
+        everLive={everLive}
         roster={roster}
         lines={lines}
       />
