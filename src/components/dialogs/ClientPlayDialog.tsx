@@ -25,7 +25,17 @@ const FIELDS: {
   { name: "play_default_language", label: "Default language", placeholder: "English (United Kingdom) – en-GB", list: "play-languages" },
 ];
 
-/** The Play Console details every app of this client shares. */
+// What App Store Connect needs, shared by every App Store app of the client.
+const IOS_FIELDS: typeof FIELDS = [
+  { name: "store_support_url", label: "Support URL", type: "url", placeholder: "https://client.com/support" },
+  { name: "store_marketing_url", label: "Marketing URL", type: "url", placeholder: "Optional" },
+  { name: "review_contact_first_name", label: "App Review contact — first name", placeholder: "First name" },
+  { name: "review_contact_last_name", label: "Last name", placeholder: "Last name" },
+  { name: "review_contact_phone", label: "Phone", placeholder: "+1 555 123 4567" },
+  { name: "review_contact_email", label: "Email", type: "email", placeholder: "reviews@client.com" },
+];
+
+/** The store details every app of this client shares — Play and App Store. */
 export function ClientPlayDialog({
   client,
   trigger = "Edit",
@@ -67,9 +77,9 @@ export function ClientPlayDialog({
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title="Play Store details"
-        subtitle="Shared by every Play Store app of this client."
-        width="max-w-lg"
+        title="Store details"
+        subtitle="Shared by every app of this client. The privacy policy URL is used by both stores."
+        width="max-w-xl"
       >
         <form action={submit}>
           <input type="hidden" name="id" value={client.id} />
@@ -79,6 +89,9 @@ export function ClientPlayDialog({
             ))}
           </datalist>
           <div className="grid gap-3 px-5 py-4 sm:grid-cols-2">
+            <h3 className="text-[12px] font-semibold uppercase tracking-wide text-muted-foreground sm:col-span-2">
+              Play Store
+            </h3>
             {FIELDS.map((f) => (
               <div key={f.name} className={f.name === "play_default_language" ? "sm:col-span-2" : ""}>
                 <label className="label" htmlFor={`cp-${f.name}`}>
@@ -99,6 +112,24 @@ export function ClientPlayDialog({
               The default language must match Play Console&apos;s wording exactly — pick it from
               the list.
             </p>
+            <h3 className="mt-2 border-t pt-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground sm:col-span-2">
+              App Store
+            </h3>
+            {IOS_FIELDS.map((f) => (
+              <div key={f.name}>
+                <label className="label" htmlFor={`cp-${f.name}`}>
+                  {f.label}
+                </label>
+                <input
+                  id={`cp-${f.name}`}
+                  name={f.name}
+                  type={f.type ?? "text"}
+                  defaultValue={(client[f.name] as string | null) ?? ""}
+                  placeholder={f.placeholder}
+                  className="field"
+                />
+              </div>
+            ))}
             {error && (
               <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[12px] text-bad sm:col-span-2">
                 {error}

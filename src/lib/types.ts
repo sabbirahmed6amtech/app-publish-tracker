@@ -33,6 +33,13 @@ export type Client = {
   play_contact_phone: string | null;
   play_website: string | null;
   play_default_language: string | null;
+  /** App Store Connect details shared by every App Store app of this client. */
+  store_support_url: string | null;
+  store_marketing_url: string | null;
+  review_contact_first_name: string | null;
+  review_contact_last_name: string | null;
+  review_contact_phone: string | null;
+  review_contact_email: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -83,6 +90,14 @@ export type Product = {
   demo_login: string | null;
   demo_password: string | null;
   demo_details: string | null;
+  /** App Store Connect listing; package_name holds the bundle ID. */
+  ios_sku: string | null;
+  ios_subtitle: string | null;
+  ios_keywords: string | null;
+  ios_promo_text: string | null;
+  ios_primary_category: string | null;
+  ios_secondary_category: string | null;
+  ios_copyright: string | null;
   created_at: string;
   updated_at: string;
 };

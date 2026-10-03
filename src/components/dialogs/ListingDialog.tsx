@@ -7,19 +7,28 @@ import { toast } from "sonner";
 import { Modal } from "@/components/Modal";
 import { Spinner } from "@/components/Spinner";
 import { saveProductListing } from "@/lib/actions";
-import { PLAY_CATEGORIES, PLAY_LIMITS } from "@/lib/constants";
-import type { Product } from "@/lib/types";
+import {
+  APP_STORE_CATEGORIES,
+  APP_STORE_LIMITS,
+  PLAY_CATEGORIES,
+  PLAY_LIMITS,
+} from "@/lib/constants";
+import type { Platform, Product } from "@/lib/types";
 
 /** One Play app's listing and App Review login — what the publisher fills in. */
 export function ListingDialog({
   product,
+  platform = "play_store",
   trigger,
   className = "btn btn-ghost h-7 px-2",
 }: {
   product: Product;
+  /** Which store this app is listed on — the fields differ. */
+  platform?: Platform;
   trigger: React.ReactNode;
   className?: string;
 }) {
+  const ios = platform === "app_store";
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,8 +65,8 @@ export function ListingDialog({
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title={`${product.app_name || product.project_name} · Play listing`}
-        subtitle="What the publisher fills into Play Console for this app."
+        title={`${product.app_name || product.project_name} · ${ios ? "App Store" : "Play"} listing`}
+        subtitle={`What the publisher fills into ${ios ? "App Store Connect" : "Play Console"} for this app.`}
         width="max-w-2xl"
       >
         <form action={submit}>
@@ -69,6 +78,10 @@ export function ListingDialog({
           </datalist>
 
           <div className="space-y-5 px-5 py-4">
+            {ios ? (
+              <IosFields product={product} />
+            ) : (
+              <>
             <section className="grid gap-3 sm:grid-cols-2">
               <div>
                 <label className="label" htmlFor="ls-package">
@@ -137,6 +150,8 @@ export function ListingDialog({
                 />
               </div>
             </section>
+              </>
+            )}
 
             <section className="rounded-xl border bg-muted/30 p-3.5">
               <h3 className="text-[13px] font-semibold">App Review access</h3>
@@ -236,5 +251,161 @@ function Counter({ value, max }: { value: number; max: number }) {
     >
       {value}/{max}
     </span>
+  );
+}
+
+/** The App Store Connect side of the listing. */
+function IosFields({ product }: { product: Product }) {
+  const [subtitle, setSubtitle] = useState(product.ios_subtitle ?? "");
+  const [keywords, setKeywords] = useState(product.ios_keywords ?? "");
+  const [promo, setPromo] = useState(product.ios_promo_text ?? "");
+  const [description, setDescription] = useState(product.long_description ?? "");
+
+  return (
+    <>
+      <datalist id="app-store-categories">
+        {APP_STORE_CATEGORIES.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
+
+      <section className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="ls-bundle">
+            Bundle ID
+          </label>
+          <input
+            id="ls-bundle"
+            name="package_name"
+            defaultValue={product.package_name ?? ""}
+            placeholder="com.client.app"
+            className="field font-mono"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <p className="mt-1 flex items-start gap-1 text-[11px] text-warn">
+            <AlertTriangleIcon className="mt-px size-3 shrink-0" />
+            Register it on developer.apple.com first — App Store Connect only offers registered
+            IDs.
+          </p>
+        </div>
+        <div>
+          <label className="label" htmlFor="ls-sku">
+            SKU
+          </label>
+          <input
+            id="ls-sku"
+            name="ios_sku"
+            defaultValue={product.ios_sku ?? ""}
+            placeholder="Defaults to the bundle ID"
+            className="field font-mono"
+            autoComplete="off"
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="ls-cat1">
+            Primary category
+          </label>
+          <input
+            id="ls-cat1"
+            name="ios_primary_category"
+            list="app-store-categories"
+            defaultValue={product.ios_primary_category ?? ""}
+            placeholder="Food & Drink"
+            className="field"
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="ls-cat2">
+            Secondary category
+          </label>
+          <input
+            id="ls-cat2"
+            name="ios_secondary_category"
+            list="app-store-categories"
+            defaultValue={product.ios_secondary_category ?? ""}
+            placeholder="Optional"
+            className="field"
+          />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <Counted label="Subtitle" value={subtitle} max={APP_STORE_LIMITS.subtitle}>
+          <input
+            id="ls-subtitle"
+            name="ios_subtitle"
+            value={subtitle}
+            onChange={(e) => setSubtitle(e.target.value)}
+            placeholder="A short line under the app name"
+            className="field"
+          />
+        </Counted>
+        <Counted label="Keywords" value={keywords} max={APP_STORE_LIMITS.keywords}>
+          <input
+            id="ls-keywords"
+            name="ios_keywords"
+            value={keywords}
+            onChange={(e) => setKeywords(e.target.value)}
+            placeholder="food,delivery,grocery — commas, no spaces"
+            className="field"
+          />
+        </Counted>
+        <Counted label="Promotional text" value={promo} max={APP_STORE_LIMITS.promoText}>
+          <textarea
+            id="ls-promo"
+            name="ios_promo_text"
+            rows={2}
+            value={promo}
+            onChange={(e) => setPromo(e.target.value)}
+            className="field resize-y"
+          />
+        </Counted>
+        <Counted label="Description" value={description} max={APP_STORE_LIMITS.description}>
+          <textarea
+            id="ls-description"
+            name="long_description"
+            rows={6}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="field resize-y"
+          />
+        </Counted>
+        <div>
+          <label className="label" htmlFor="ls-copyright">
+            Copyright
+          </label>
+          <input
+            id="ls-copyright"
+            name="ios_copyright"
+            defaultValue={product.ios_copyright ?? ""}
+            placeholder={`Defaults to "© ${new Date().getFullYear()} <client name>"`}
+            className="field"
+          />
+        </div>
+      </section>
+    </>
+  );
+}
+
+function Counted({
+  label,
+  value,
+  max,
+  children,
+}: {
+  label: string;
+  value: string;
+  max: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between">
+        <span className="label mb-0">{label}</span>
+        <Counter value={value.length} max={max} />
+      </div>
+      {children}
+    </div>
   );
 }

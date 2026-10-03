@@ -32,8 +32,67 @@ import {
   type PublisherState,
   type PublisherStep,
 } from "@/lib/publisherBridge";
-import { publishChecks, publishData, type PublishCheck } from "@/lib/publish";
-import type { Client, LineBadge, Product } from "@/lib/types";
+import {
+  publishChecks,
+  publishChecksIos,
+  publishData,
+  publishDataIos,
+  type PublishCheck,
+} from "@/lib/publish";
+import type { Client, LineBadge, Platform, Product } from "@/lib/types";
+
+// Everything that differs between the two stores, in one place.
+const STORE = {
+  play_store: {
+    store: "Play Store",
+    console: "Play Console",
+    idLabel: "Package name",
+    idCheck: "applicationId in build.gradle. It can't change after publishing.",
+    accountLabel: "Developer account",
+    accountNote:
+      "Picked by name the first time, then remembered. A wrong account wastes the package name for good.",
+    clientButton: "Edit client store details",
+    footnote:
+      'Advertising ID is answered "No". Uploading the AAB, release notes and submitting for review stay with you — review everything before you submit.',
+    steps: [
+      "Create app",
+      "Privacy policy",
+      "Sign in details",
+      "Ads",
+      "Content rating",
+      "Target audience",
+      "Data safety",
+      "Government apps",
+      "Financial features",
+      "Health",
+      "Store settings",
+      "Store listings",
+      "Advertising ID",
+    ],
+  },
+  app_store: {
+    store: "App Store",
+    console: "App Store Connect",
+    idLabel: "Bundle ID",
+    idCheck:
+      "is registered on developer.apple.com and matches the Xcode project. It can't change after the app is created.",
+    accountLabel: "Team",
+    accountNote:
+      "The run checks App Store Connect is on this team before creating anything, and pauses for you if it can't tell.",
+    clientButton: "Edit client store details",
+    footnote:
+      "Screenshots, choosing the build and submitting for review stay with you — review everything before you submit.",
+    steps: [
+      "Create app",
+      "App Information",
+      "Age rating",
+      "Pricing & Availability",
+      "App Privacy",
+      "Version page",
+      "App Review info",
+    ],
+  },
+} as const;
 
 /**
  * Hands a Play Store app to the "Play Console Publisher" extension: it opens
@@ -43,12 +102,15 @@ import type { Client, LineBadge, Product } from "@/lib/types";
 export function PublishPanel({
   client,
   product,
+  platform = "play_store",
   accountName,
   badge,
 }: {
   client: Client;
   product: Product;
-  /** The Play developer account this app must be created under. */
+  /** Which store to publish to. */
+  platform?: Platform;
+  /** The developer account (Play) or team (App Store) this app belongs under. */
   accountName: string;
   /** The app's product-line logo, for the header. */
   badge?: LineBadge;
@@ -61,7 +123,7 @@ export function PublishPanel({
         type="button"
         className="btn btn-ghost h-7 gap-1 px-2 text-[12px]"
         onClick={() => setOpen(true)}
-        title="Fill Play Console for this app"
+        title={`Fill ${STORE[platform].console} for this app`}
       >
         <RocketIcon className="size-3.5" />
         Publish
@@ -77,10 +139,13 @@ export function PublishPanel({
             <DialogTitle className="sr-only">
               Publish {product.app_name || product.project_name}
             </DialogTitle>
-            <DialogDescription className="sr-only">Fill Play Console for this app</DialogDescription>
+            <DialogDescription className="sr-only">
+              Fill {STORE[platform].console} for this app
+            </DialogDescription>
             <PanelBody
               client={client}
               product={product}
+              platform={platform}
               accountName={accountName}
               badge={badge}
             />
@@ -96,20 +161,29 @@ export function PublishPanel({
 function PanelBody({
   client,
   product,
+  platform,
   accountName,
   badge,
 }: {
   client: Client;
   product: Product;
+  platform: Platform;
   accountName: string;
   badge?: LineBadge;
 }) {
+  const store = STORE[platform];
   const bridge = usePublisherBridge();
   const [confirmed, setConfirmed] = useState(false);
   const [launching, setLaunching] = useState(false);
 
-  const data = publishData(client, product);
-  const checks = publishChecks(data);
+  const ios = platform === "app_store";
+  const data = ios ? publishDataIos(client, product) : publishData(client, product);
+  const checks = ios
+    ? publishChecksIos(data as ReturnType<typeof publishDataIos>)
+    : publishChecks(data as ReturnType<typeof publishData>);
+  const appId = ios
+    ? (data as ReturnType<typeof publishDataIos>).bundleId
+    : (data as ReturnType<typeof publishData>).packageName;
   const blocking = checks.filter((c) => c.required && !c.ok);
 
   const run = bridge.state;
@@ -143,7 +217,7 @@ function PanelBody({
 
   return (
     <div className="flex max-h-[calc(100dvh-2rem)] flex-col">
-      <Hero product={product} badge={badge} stage={stage} />
+      <Hero product={product} platform={platform} badge={badge} stage={stage} />
 
       <div className="grid min-h-0 flex-1 md:grid-cols-[1fr_340px] xl:grid-cols-[1fr_380px]">
         <div className="min-h-0 space-y-4 overflow-y-auto p-5">
@@ -164,18 +238,23 @@ function PanelBody({
             <>
               {/* On wide screens: the checklist beside the account, switch and launch. */}
               <div className="grid items-start gap-4 xl:grid-cols-2">
-                <Readiness checks={checks} client={client} product={product} />
+                <Readiness
+                    checks={checks}
+                    client={client}
+                    product={product}
+                    platform={platform}
+                  />
                 <div className="space-y-4">
-                  <AccountCard accountName={accountName} />
+                  <AccountCard accountName={accountName} platform={platform} />
 
                   <Toggle
                     checked={confirmed}
                     onChange={setConfirmed}
-                    title="Package name verified"
+                    title={`${store.idLabel} verified`}
                     detail={
                       <>
-                        <span className="font-mono">{data.packageName || "—"}</span> matches
-                        applicationId in build.gradle. It can&apos;t change after publishing.
+                        <span className="font-mono">{appId || "—"}</span>{" "}
+                        {ios ? store.idCheck : `matches ${store.idCheck}`}
                       </>
                     }
                   />
@@ -196,8 +275,8 @@ function PanelBody({
                     {blocking.length > 0
                       ? `Add the ${blocking.map((b) => b.label.toLowerCase()).join(" and ")} to continue.`
                       : !confirmed
-                        ? "Confirm the package name to continue."
-                        : "Play Console opens in a new tab and fills 13 sections."}
+                        ? `Confirm the ${store.idLabel.toLowerCase()} to continue.`
+                        : `${store.console} opens in a new tab and fills ${store.steps.length} sections.`}
                   </p>
                 </div>
               </div>
@@ -206,7 +285,15 @@ function PanelBody({
         </div>
 
         <aside className="min-h-0 overflow-y-auto border-t bg-muted/30 p-5 md:border-l md:border-t-0">
-          <Timeline steps={ours && run ? run.steps : PREVIEW_STEPS} live={!!ours} />
+          <Timeline
+            steps={
+              ours && run
+                ? run.steps
+                : store.steps.map((name) => ({ name, status: "pending" as const }))
+            }
+            live={!!ours}
+            footnote={store.footnote}
+          />
         </aside>
       </div>
     </div>
@@ -219,10 +306,12 @@ const STAGES = ["Check", "Confirm", "Launch"];
 
 function Hero({
   product,
+  platform,
   badge,
   stage,
 }: {
   product: Product;
+  platform: Platform;
   badge?: LineBadge;
   stage: number;
 }) {
@@ -241,12 +330,12 @@ function Hero({
         <div className="relative">
           <ProjectLogo badge={badge} project={product.project_name} size="lg" />
           <span className="absolute -bottom-1 -right-1 grid size-5 place-items-center rounded-full border bg-card shadow-xs">
-            <StoreIcon platform="play_store" size={11} />
+            <StoreIcon platform={platform} size={11} />
           </span>
         </div>
         <div className="min-w-0">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Publish to Play Store
+            Publish to {STORE[platform].store}
           </p>
           <h2 className="truncate text-[18px] font-semibold leading-tight">
             {product.app_name || product.project_name}
@@ -306,10 +395,12 @@ function Readiness({
   checks,
   client,
   product,
+  platform,
 }: {
   checks: PublishCheck[];
   client: Client;
   product: Product;
+  platform: Platform;
 }) {
   const ready = checks.filter((c) => c.ok).length;
   const complete = ready === checks.length;
@@ -327,7 +418,7 @@ function Readiness({
           </h3>
           <p className="text-[12px] text-muted-foreground">
             {complete
-              ? "All the details Play Console asks for are filled."
+              ? `All the details ${STORE[platform].console} asks for are filled.`
               : "Missing ones are left for you to fill by hand — or add them now."}
           </p>
           <button
@@ -384,12 +475,13 @@ function Readiness({
           <div className="mt-3 flex flex-wrap gap-2">
             <ListingDialog
               product={product}
+              platform={platform}
               trigger="Edit app listing"
               className="btn btn-secondary h-8 text-[12px]"
             />
             <ClientPlayDialog
               client={client}
-              trigger="Edit client Play details"
+              trigger={STORE[platform].clientButton}
               className="btn btn-secondary h-8 text-[12px]"
             />
           </div>
@@ -437,7 +529,7 @@ function Ring({ value, total, size = 56 }: { value: number; total: number; size?
 
 // ──────────────────────────────────────────────── account and toggle ──
 
-function AccountCard({ accountName }: { accountName: string }) {
+function AccountCard({ accountName, platform }: { accountName: string; platform: Platform }) {
   return (
     <section
       className="tracker-rise flex items-start gap-3 rounded-2xl border bg-card p-4 shadow-xs"
@@ -448,14 +540,13 @@ function AccountCard({ accountName }: { accountName: string }) {
       </span>
       <div className="min-w-0 text-[12px] leading-relaxed">
         <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Developer account
+          {STORE[platform].accountLabel}
         </p>
         <p className="truncate text-[14px] font-semibold text-foreground">
           {accountName || "Not set"}
         </p>
         <p className="text-muted-foreground">
-          Picked by name the first time, then remembered. A wrong account wastes the package name
-          for good.
+          {STORE[platform].accountNote}
         </p>
       </div>
     </section>
@@ -671,26 +762,16 @@ function RunSummary({
   );
 }
 
-// What the extension fills, in order — shown before a run as a preview. It
-// mirrors the extension's own step list.
-const PREVIEW_STEPS: PublisherStep[] = [
-  "Create app",
-  "Privacy policy",
-  "Sign in details",
-  "Ads",
-  "Content rating",
-  "Target audience",
-  "Data safety",
-  "Government apps",
-  "Financial features",
-  "Health",
-  "Store settings",
-  "Store listings",
-  "Advertising ID",
-].map((name) => ({ name, status: "pending" as const }));
-
 /** The sections as a vertical timeline: a preview before the run, live during it. */
-function Timeline({ steps, live }: { steps: PublisherStep[]; live: boolean }) {
+function Timeline({
+  steps,
+  live,
+  footnote,
+}: {
+  steps: PublisherStep[];
+  live: boolean;
+  footnote: string;
+}) {
   return (
     <section>
       <div className="mb-3 flex items-baseline justify-between">
@@ -763,8 +844,7 @@ function Timeline({ steps, live }: { steps: PublisherStep[]; live: boolean }) {
 
       {!live && (
         <p className="mt-4 rounded-xl border border-dashed bg-card px-3.5 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
-          Advertising ID is answered &quot;No&quot;. Uploading the AAB, release notes and
-          submitting for review stay with you — review everything before you submit.
+          {footnote}
         </p>
       )}
     </section>

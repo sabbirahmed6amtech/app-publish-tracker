@@ -60,6 +60,13 @@ create table clients (
   play_contact_phone      text,
   play_website            text,
   play_default_language   text,
+  -- App Store Connect details shared by its apps (see 010).
+  store_support_url          text,
+  store_marketing_url        text,
+  review_contact_first_name  text,
+  review_contact_last_name   text,
+  review_contact_phone       text,
+  review_contact_email       text,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
@@ -146,6 +153,14 @@ create table products (
   demo_login        text,
   demo_password     text,
   demo_details      text,
+  -- App Store Connect (see 010). package_name holds the bundle ID.
+  ios_sku                text,
+  ios_subtitle           text,                 -- limit: 30 characters
+  ios_keywords           text,                 -- limit: 100 characters
+  ios_promo_text         text,                 -- limit: 170 characters
+  ios_primary_category   text,
+  ios_secondary_category text,
+  ios_copyright          text,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
   unique (account_id, project_name)

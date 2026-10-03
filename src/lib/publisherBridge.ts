@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { PublishAppData } from "./publish";
+import type { PublishAppData, PublishAppDataIos } from "./publish";
 
 /**
  * Talks to the "Play Console Publisher" Chrome extension.
@@ -50,7 +50,7 @@ export type Bridge = {
   state: PublisherState | null;
   start: (job: {
     jobId: string;
-    appData: PublishAppData;
+    appData: PublishAppData | PublishAppDataIos;
     expectedAccount: string;
   }) => Promise<{ ok: boolean; error?: string }>;
   send: (type: "CONTINUE" | "STOP" | "RESET") => void;

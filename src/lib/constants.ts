@@ -133,6 +133,24 @@ export const PLAY_LANGUAGES = [
   "Turkish – tr-TR",
 ];
 
+/** App Store Connect's categories, spelled as it shows them. */
+export const APP_STORE_CATEGORIES = [
+  "Books", "Business", "Developer Tools", "Education", "Entertainment", "Finance",
+  "Food & Drink", "Games", "Graphics & Design", "Health & Fitness", "Kids", "Lifestyle",
+  "Magazines & Newspapers", "Medical", "Music", "Navigation", "News", "Photo & Video",
+  "Productivity", "Reference", "Shopping", "Social Networking", "Sports", "Travel",
+  "Utilities", "Weather",
+];
+
+/** App Store Connect's length limits. */
+export const APP_STORE_LIMITS = {
+  appName: 30,
+  subtitle: 30,
+  keywords: 100,
+  promoText: 170,
+  description: 4000,
+};
+
 /** Play Console's length limits for the store listing. */
 export const PLAY_LIMITS = { appName: 30, shortDescription: 80, longDescription: 4000 };
 
