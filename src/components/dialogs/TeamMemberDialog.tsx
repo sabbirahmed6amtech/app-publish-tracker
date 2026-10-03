@@ -76,8 +76,7 @@ export function TeamMemberDialog({
               />
               {member?.user_id && (
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Linked to a Supabase Auth login. Changing this does not change how they
-                  sign in.
+                  Linked to a login. Changing this does not change how they sign in.
                 </p>
               )}
             </div>

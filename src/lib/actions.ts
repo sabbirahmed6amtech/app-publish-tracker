@@ -2,7 +2,25 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient as db } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
+import type { PoolConnection } from "mysql2/promise";
+import { getCurrentMemberId, requireUser } from "@/lib/auth";
+import { SESSION_COOKIE } from "@/lib/session";
+import {
+  errorMessage,
+  exec,
+  insert,
+  insertMany,
+  isDuplicate,
+  placeholders,
+  pool,
+  row,
+  rows,
+  transaction,
+  updateById,
+} from "@/lib/db";
+import { removeUpload, safeFileName, saveUpload } from "@/lib/uploads";
+import { runStoreWatch } from "@/lib/storeWatchRun";
 import {
   APP_STORE_LIMITS,
   PLAY_LIMITS,
@@ -36,12 +54,17 @@ function refresh() {
   revalidatePath("/", "layout");
 }
 
-/** Private storage bucket holding keystore files. */
-const JKS_BUCKET = "jks";
+const fail = (error: unknown, duplicate?: string): ActionResult => ({
+  ok: false,
+  error: duplicate && isDuplicate(error) ? duplicate : errorMessage(error),
+});
+
+const today = () => new Date().toISOString().slice(0, 10);
 
 // ------------------------------------------------------------------ clients
 
 export async function saveClient(fd: FormData): Promise<ActionResult> {
+  await requireUser();
   const id = str(fd, "id");
   const ticket = str(fd, "ticket");
   const name = str(fd, "name");
@@ -49,34 +72,29 @@ export async function saveClient(fd: FormData): Promise<ActionResult> {
   if (!ticket) return { ok: false, error: "Ticket number is required." };
   if (!name) return { ok: false, error: "Client name is required." };
 
-  const supabase = await db();
   const payload = { ticket, name, note: nullable(fd, "note") };
-
-  const { data, error } = id
-    ? await supabase.from("clients").update(payload).eq("id", id).select("id").single()
-    : await supabase.from("clients").insert(payload).select("id").single();
-
-  if (error) {
-    return {
-      ok: false,
-      error: error.code === "23505" ? `Ticket ${ticket} already exists.` : error.message,
-    };
+  try {
+    const savedId = id ? (await updateById("clients", id, payload), id) : await insert("clients", payload);
+    refresh();
+    return { ok: true, id: savedId };
+  } catch (e) {
+    return fail(e, `Ticket ${ticket} already exists.`);
   }
-  refresh();
-  return { ok: true, id: data.id };
 }
 
 export async function deleteClient(id: string): Promise<ActionResult> {
-  const supabase = await db();
+  await requireUser();
   // Keystore rows cascade with the client; their files have to go by hand.
-  const { data: keystores } = await supabase
-    .from("keystores")
-    .select("file_path")
-    .eq("client_id", id);
-  const { error } = await supabase.from("clients").delete().eq("id", id);
-  if (error) return { ok: false, error: error.message };
-  const paths = (keystores ?? []).flatMap((k) => (k.file_path ? [k.file_path] : []));
-  if (paths.length) await supabase.storage.from(JKS_BUCKET).remove(paths);
+  const keystores = await rows<{ file_path: string | null }>(
+    "SELECT file_path FROM keystores WHERE client_id = ?",
+    [id],
+  );
+  try {
+    await exec("DELETE FROM clients WHERE id = ?", [id]);
+  } catch (e) {
+    return fail(e);
+  }
+  for (const k of keystores) await removeUpload("jks", k.file_path);
   refresh();
   redirect("/clients");
 }
@@ -86,9 +104,10 @@ export type SetupApp = { project_name: string; app_name: string; stores: Platfor
 /**
  * Everything a new client needs, from the setup wizard, in one go: the client,
  * its store accounts, its apps, an optional keystore, and the first release.
- * If any step fails the half-made client is removed again.
+ * If any step fails nothing is kept.
  */
 export async function createClientSetup(fd: FormData): Promise<ActionResult> {
+  await requireUser();
   const ticket = str(fd, "ticket");
   const name = str(fd, "name");
   if (!ticket) return { ok: false, error: "Ticket number is required." };
@@ -109,101 +128,96 @@ export async function createClientSetup(fd: FormData): Promise<ActionResult> {
     .map((a) => ({ ...a, project_name: a.project_name.trim(), app_name: a.app_name.trim() }))
     .filter((a) => a.project_name && a.stores.some((p) => stores.includes(p)));
 
-  const supabase = await db();
-  const { data: client, error } = await supabase
-    .from("clients")
-    .insert({ ticket, name, note: nullable(fd, "note") })
-    .select("id")
-    .single();
-  if (error) {
-    return {
-      ok: false,
-      error: error.code === "23505" ? `Ticket ${ticket} already exists.` : error.message,
-    };
-  }
-
-  const fail = async (message: string): Promise<ActionResult> => {
-    await supabase.from("clients").delete().eq("id", client.id);
-    return { ok: false, error: message };
-  };
-
-  // ---- store accounts
-  const { data: accounts, error: accountError } = await supabase
-    .from("publisher_accounts")
-    .insert(
-      stores.map((platform) => ({
-        client_id: client.id,
-        platform,
-        account_name: str(fd, `${platform}_account_name`),
-        account_type: (str(fd, `${platform}_account_type`) || "organization") as AccountType,
-      })),
-    )
-    .select("id, platform");
-  if (accountError) return fail(accountError.message);
-  const accountFor = new Map(accounts.map((a) => [a.platform as Platform, a.id as string]));
-
-  // ---- keystore
-  let keystoreId: string | null = null;
   const file = fd.get("keystore_file");
   const upload = file instanceof File && file.size > 0 ? file : null;
   const details = nullable(fd, "keystore_details");
-  if (upload || details) {
-    const { data: keystore, error: keystoreError } = await supabase
-      .from("keystores")
-      .insert({
-        client_id: client.id,
-        name: str(fd, "keystore_name") || "Main keystore",
-        details,
-      })
-      .select("id")
-      .single();
-    if (keystoreError) return fail(keystoreError.message);
-    keystoreId = keystore.id;
-    if (upload) {
-      const uploadError = await uploadKeystoreFile(supabase, keystore.id, upload);
-      if (uploadError) {
-        return fail(`The keystore file couldn't be uploaded: ${uploadError}`);
-      }
-    }
-  }
 
-  // ---- apps, one per store each ships to
-  const products = apps.flatMap((a) =>
-    a.stores
-      .filter((p) => accountFor.has(p))
-      .map((p) => ({
-        client_id: client.id,
-        account_id: accountFor.get(p)!,
-        project_name: a.project_name,
-        app_name: a.app_name,
-        keystore_id: p === "play_store" ? keystoreId : null,
-      })),
-  );
-  if (products.length) {
-    const { error: productError } = await supabase
-      .from("products")
-      .insert(products.map((p, i) => ({ ...p, sort_order: i })));
-    if (productError) return fail(duplicateProduct(productError));
+  let clientId: string;
+  let savedFile: string | null = null;
+  let productCount = 0;
+  try {
+    clientId = await transaction(async (conn) => {
+      const id = await insert("clients", { ticket, name, note: nullable(fd, "note") }, conn);
+
+      // ---- store accounts
+      const accountFor = new Map<Platform, string>();
+      for (const platform of stores) {
+        accountFor.set(
+          platform,
+          await insert(
+            "publisher_accounts",
+            {
+              client_id: id,
+              platform,
+              account_name: str(fd, `${platform}_account_name`),
+              account_type: (str(fd, `${platform}_account_type`) || "organization") as AccountType,
+            },
+            conn,
+          ),
+        );
+      }
+
+      // ---- keystore
+      let keystoreId: string | null = null;
+      if (upload || details) {
+        keystoreId = await insert(
+          "keystores",
+          { client_id: id, name: str(fd, "keystore_name") || "Main keystore", details },
+          conn,
+        );
+        if (upload) savedFile = await storeKeystoreFile(keystoreId, upload, conn);
+      }
+
+      // ---- apps, one per store each ships to
+      const products = apps.flatMap((a) =>
+        a.stores
+          .filter((p) => accountFor.has(p))
+          .map((p) => ({
+            client_id: id,
+            account_id: accountFor.get(p)!,
+            project_name: a.project_name,
+            app_name: a.app_name,
+            keystore_id: p === "play_store" ? keystoreId : null,
+          })),
+      );
+      await insertMany(
+        "products",
+        products.map((p, i) => ({ ...p, sort_order: i })),
+        conn,
+      );
+      productCount = products.length;
+      return id;
+    });
+  } catch (e) {
+    await removeUpload("jks", savedFile);
+    if (isDuplicate(e) && /ticket/i.test(errorMessage(e))) {
+      return { ok: false, error: `Ticket ${ticket} already exists.` };
+    }
+    return fail(e, "That project already exists on this store for this client.");
   }
 
   // ---- first release
-  if (str(fd, "start_release") === "1" && products.length) {
-    const created = await startNewRelease(client.id);
-    if (!created.ok) return fail(created.error);
+  if (str(fd, "start_release") === "1" && productCount) {
+    const created = await startNewRelease(clientId);
+    if (!created.ok) {
+      await exec("DELETE FROM clients WHERE id = ?", [clientId]);
+      await removeUpload("jks", savedFile);
+      return created;
+    }
   }
 
   refresh();
-  return { ok: true, id: client.id };
+  return { ok: true, id: clientId };
 }
 
 // ----------------------------------------------------------------- accounts
 
 export async function saveAccount(fd: FormData): Promise<ActionResult> {
+  await requireUser();
   const id = str(fd, "id");
   const account_name = str(fd, "account_name");
   if (!account_name) return { ok: false, error: "Account name is required." };
 
-  const supabase = await db();
   const payload = {
     client_id: str(fd, "client_id"),
     platform: str(fd, "platform") as Platform,
@@ -211,28 +225,23 @@ export async function saveAccount(fd: FormData): Promise<ActionResult> {
     account_type: str(fd, "account_type") as AccountType,
     note: nullable(fd, "note"),
   };
-
-  const { error } = id
-    ? await supabase.from("publisher_accounts").update(payload).eq("id", id)
-    : await supabase.from("publisher_accounts").insert(payload);
-
-  if (error) {
-    return {
-      ok: false,
-      error:
-        error.code === "23505"
-          ? "This client already has an account on that platform."
-          : error.message,
-    };
+  try {
+    if (id) await updateById("publisher_accounts", id, payload);
+    else await insert("publisher_accounts", payload);
+  } catch (e) {
+    return fail(e, "This client already has an account on that platform.");
   }
   refresh();
   return { ok: true };
 }
 
 export async function deleteAccount(id: string): Promise<ActionResult> {
-  const supabase = await db();
-  const { error } = await supabase.from("publisher_accounts").delete().eq("id", id);
-  if (error) return { ok: false, error: error.message };
+  await requireUser();
+  try {
+    await exec("DELETE FROM publisher_accounts WHERE id = ?", [id]);
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true };
 }
@@ -240,13 +249,12 @@ export async function deleteAccount(id: string): Promise<ActionResult> {
 // ----------------------------------------------------------------- releases
 
 export async function saveRelease(fd: FormData): Promise<ActionResult> {
+  await requireUser();
   const id = str(fd, "id");
   const client_id = str(fd, "client_id");
   const version = str(fd, "version");
 
   if (!version) return { ok: false, error: "Version is required." };
-
-  const supabase = await db();
 
   // Whoever owns the release owns its apps by default. The checkbox is the
   // intent, so this runs on every save it is ticked for — that is what lets
@@ -258,115 +266,94 @@ export async function saveRelease(fd: FormData): Promise<ActionResult> {
     title: nullable(fd, "title"),
     assigned_to: nullable(fd, "assigned_to"),
     note: nullable(fd, "note"),
-    started_on: str(fd, "started_on") || new Date().toISOString().slice(0, 10),
+    started_on: str(fd, "started_on") || today(),
   };
 
-  const { data, error } = id
-    ? await supabase.from("releases").update(payload).eq("id", id).select("id").single()
-    : await supabase.from("releases").insert(payload).select("id").single();
-
-  if (error) {
-    return {
-      ok: false,
-      error:
-        error.code === "23505"
-          ? `This client already has a release ${version}.`
-          : error.message,
-    };
+  let savedId: string;
+  try {
+    savedId = id ? (await updateById("releases", id, payload), id) : await insert("releases", payload);
+    if (cascade && payload.assigned_to) {
+      await exec("UPDATE apps SET assigned_to = ? WHERE release_id = ?", [payload.assigned_to, savedId]);
+    }
+  } catch (e) {
+    return fail(e, `This client already has a release ${version}.`);
   }
-
-  if (cascade && payload.assigned_to) {
-    const { error: cascadeError } = await supabase
-      .from("apps")
-      .update({ assigned_to: payload.assigned_to })
-      .eq("release_id", data.id);
-    if (cascadeError) return { ok: false, error: cascadeError.message };
-  }
-
   refresh();
-  return { ok: true, id: data.id };
+  return { ok: true, id: savedId };
 }
 
 export async function deleteRelease(id: string): Promise<ActionResult> {
-  const supabase = await db();
-  const { data: release } = await supabase
-    .from("releases")
-    .select("client_id")
-    .eq("id", id)
-    .maybeSingle();
-  const { error } = await supabase.from("releases").delete().eq("id", id);
-  if (error) return { ok: false, error: error.message };
+  await requireUser();
+  const release = await row<{ client_id: string }>("SELECT client_id FROM releases WHERE id = ?", [id]);
+  try {
+    await exec("DELETE FROM releases WHERE id = ?", [id]);
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   // The page being viewed no longer exists.
   if (release) redirect(`/clients/${release.client_id}?tab=releases`);
   return { ok: true };
 }
 
-/** The signed-in user's team member id, for "assign to me" defaults. */
-async function currentMemberId(supabase: Awaited<ReturnType<typeof db>>) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase
-    .from("team_members")
-    .select("id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  return data?.id ?? null;
-}
-
 /**
  * Submit products into a release as fresh "ongoing" submissions. The Flutter
  * version carries over from each product's most recent submission, and its
- * build number is bumped (1.0.6+9 -> 1.0.7+10).
+ * build number is bumped (1.0.6+9 -> 1.0.7+10). The database fills in each
+ * submission's identity from its product.
  */
 async function submitProducts(
-  supabase: Awaited<ReturnType<typeof db>>,
   releaseId: string,
   productIds: string[],
   assignee: string | null,
-) {
-  if (productIds.length === 0) return null;
+  conn?: PoolConnection,
+): Promise<void> {
+  if (productIds.length === 0) return;
+  const on = conn ?? pool;
+  const inIds = `(${placeholders(productIds.length)})`;
 
-  const [{ data: existing }, { data: previous }] = await Promise.all([
-    supabase.from("apps").select("product_id").eq("release_id", releaseId),
-    supabase
-      .from("apps")
-      .select("product_id, flutter_version, build_version, created_at")
-      .in("product_id", productIds)
-      .order("created_at", { ascending: false }),
+  const [existing, previous, products] = await Promise.all([
+    rows<{ product_id: string }>("SELECT product_id FROM apps WHERE release_id = ?", [releaseId], on),
+    rows<{ product_id: string; flutter_version: string | null; build_version: string | null }>(
+      `SELECT product_id, flutter_version, build_version FROM apps
+        WHERE product_id IN ${inIds} ORDER BY created_at DESC`,
+      productIds,
+      on,
+    ),
+    rows<{ id: string; sort_order: number }>(
+      `SELECT id, sort_order FROM products WHERE id IN ${inIds}`,
+      productIds,
+      on,
+    ),
   ]);
 
-  const already = new Set((existing ?? []).map((a) => a.product_id));
+  const already = new Set(existing.map((a) => a.product_id));
   // Newest first, so the first value seen per product is the latest one.
   const flutter = new Map<string, string | null>();
   const build = new Map<string, string>();
-  for (const p of previous ?? []) {
+  for (const p of previous) {
     if (!flutter.has(p.product_id)) flutter.set(p.product_id, p.flutter_version);
     if (!build.has(p.product_id) && p.build_version) build.set(p.product_id, p.build_version);
   }
 
-  const { data: products } = await supabase
-    .from("products")
-    .select("id, sort_order")
-    .in("id", productIds);
-
-  const rows = (products ?? [])
-    .filter((p) => !already.has(p.id))
-    .map((p) => ({
-      release_id: releaseId,
-      product_id: p.id,
-      sort_order: p.sort_order,
-      status: "ongoing" as AppStatus,
-      assigned_to: assignee,
-      flutter_version: flutter.get(p.id) ?? null,
-      build_version: bumpBuild(build.get(p.id)),
-    }));
-  if (rows.length === 0) return null;
-
-  const { error } = await supabase.from("apps").insert(rows);
-  return error;
+  await insertMany(
+    "apps",
+    products
+      .filter((p) => !already.has(p.id))
+      .map((p) => ({
+        release_id: releaseId,
+        product_id: p.id,
+        // Filled from the product by the database.
+        account_id: "",
+        project_name: "",
+        sort_order: p.sort_order,
+        status: "ongoing" as AppStatus,
+        assigned_to: assignee,
+        flutter_version: flutter.get(p.id) ?? null,
+        build_version: bumpBuild(build.get(p.id)),
+      })),
+    on,
+  );
 }
 
 /**
@@ -374,37 +361,33 @@ async function submitProducts(
  * clicked, with every one of the client's active apps submitted as "ongoing".
  */
 export async function startNewRelease(clientId: string): Promise<ActionResult> {
-  const supabase = await db();
-
-  const [{ data: releases, error: readError }, { data: products }, me] = await Promise.all([
-    supabase.from("releases").select("version").eq("client_id", clientId),
-    supabase.from("products").select("id").eq("client_id", clientId).eq("archived", false),
-    currentMemberId(supabase),
+  await requireUser();
+  const [releases, products, me] = await Promise.all([
+    rows<{ version: string }>("SELECT version FROM releases WHERE client_id = ?", [clientId]),
+    rows<{ id: string }>("SELECT id FROM products WHERE client_id = ? AND archived = FALSE", [clientId]),
+    getCurrentMemberId(),
   ]);
-  if (readError) return { ok: false, error: readError.message };
 
-  const { data: created, error } = await supabase
-    .from("releases")
-    .insert({
-      client_id: clientId,
-      version: suggestNextVersion((releases ?? []).map((r) => r.version)),
-      assigned_to: me,
-      started_on: new Date().toISOString().slice(0, 10),
-    })
-    .select("id")
-    .single();
-  if (error) return { ok: false, error: error.message };
-
-  const submitError = await submitProducts(
-    supabase,
-    created.id,
-    (products ?? []).map((p) => p.id),
-    me,
-  );
-  if (submitError) return { ok: false, error: submitError.message };
-
-  refresh();
-  return { ok: true, id: created.id };
+  try {
+    const id = await transaction(async (conn) => {
+      const releaseId = await insert(
+        "releases",
+        {
+          client_id: clientId,
+          version: suggestNextVersion(releases.map((r) => r.version)),
+          assigned_to: me,
+          started_on: today(),
+        },
+        conn,
+      );
+      await submitProducts(releaseId, products.map((p) => p.id), me, conn);
+      return releaseId;
+    });
+    refresh();
+    return { ok: true, id };
+  } catch (e) {
+    return fail(e);
+  }
 }
 
 /** Start a release with the same apps as a previous one. */
@@ -412,22 +395,17 @@ export async function copyAppsFromRelease(
   fromReleaseId: string,
   toReleaseId: string,
 ): Promise<ActionResult> {
-  const supabase = await db();
-
-  const [{ data: source, error: readError }, { data: target }] = await Promise.all([
-    supabase.from("apps").select("product_id").eq("release_id", fromReleaseId),
+  await requireUser();
+  const [source, target] = await Promise.all([
+    rows<{ product_id: string }>("SELECT product_id FROM apps WHERE release_id = ?", [fromReleaseId]),
     // The copies belong to whoever is running the new release.
-    supabase.from("releases").select("assigned_to").eq("id", toReleaseId).maybeSingle(),
+    row<{ assigned_to: string | null }>("SELECT assigned_to FROM releases WHERE id = ?", [toReleaseId]),
   ]);
-  if (readError) return { ok: false, error: readError.message };
-
-  const error = await submitProducts(
-    supabase,
-    toReleaseId,
-    (source ?? []).map((a) => a.product_id),
-    target?.assigned_to ?? null,
-  );
-  if (error) return { ok: false, error: error.message };
+  try {
+    await submitProducts(toReleaseId, source.map((a) => a.product_id), target?.assigned_to ?? null);
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true };
 }
@@ -437,18 +415,23 @@ export async function addProductsToRelease(
   releaseId: string,
   productIds: string[],
 ): Promise<ActionResult> {
-  const supabase = await db();
-  const [{ data: release }, me] = await Promise.all([
-    supabase.from("releases").select("assigned_to").eq("id", releaseId).maybeSingle(),
-    currentMemberId(supabase),
+  await requireUser();
+  const [release, me] = await Promise.all([
+    row<{ assigned_to: string | null }>("SELECT assigned_to FROM releases WHERE id = ?", [releaseId]),
+    getCurrentMemberId(),
   ]);
-  const error = await submitProducts(supabase, releaseId, productIds, release?.assigned_to ?? me);
-  if (error) return { ok: false, error: error.message };
+  try {
+    await submitProducts(releaseId, productIds, release?.assigned_to ?? me);
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true };
 }
 
 // ----------------------------------------------------------------- products
+
+const DUPLICATE_PRODUCT = "That project already exists on this store for this client.";
 
 /**
  * Create or edit one of a client's permanent apps. Creating takes one or more
@@ -456,6 +439,7 @@ export async function addProductsToRelease(
  * listing.
  */
 export async function saveProduct(fd: FormData): Promise<ActionResult> {
+  await requireUser();
   const id = str(fd, "id");
   const client_id = str(fd, "client_id");
   const project_name = str(fd, "project_name");
@@ -469,14 +453,12 @@ export async function saveProduct(fd: FormData): Promise<ActionResult> {
     note: nullable(fd, "note"),
   };
 
-  const supabase = await db();
-
   if (id) {
-    const { error } = await supabase
-      .from("products")
-      .update({ ...fields, account_id: str(fd, "account_id") })
-      .eq("id", id);
-    if (error) return { ok: false, error: duplicateProduct(error) };
+    try {
+      await updateById("products", id, { ...fields, account_id: str(fd, "account_id") });
+    } catch (e) {
+      return fail(e, DUPLICATE_PRODUCT);
+    }
     refresh();
     return { ok: true, id };
   }
@@ -484,32 +466,27 @@ export async function saveProduct(fd: FormData): Promise<ActionResult> {
   const accountIds = fd.getAll("account_ids").map(String).filter(Boolean);
   if (accountIds.length === 0) return { ok: false, error: "Pick at least one store." };
 
-  const { count } = await supabase
-    .from("products")
-    .select("id", { count: "exact", head: true })
-    .eq("client_id", client_id);
-
-  const { error } = await supabase.from("products").insert(
-    accountIds.map((account_id, i) => ({
-      ...fields,
-      client_id,
-      account_id,
-      sort_order: (count ?? 0) + i,
-    })),
-  );
-  if (error) return { ok: false, error: duplicateProduct(error) };
+  const count = await row<{ n: number }>("SELECT COUNT(*) AS n FROM products WHERE client_id = ?", [client_id]);
+  try {
+    await insertMany(
+      "products",
+      accountIds.map((account_id, i) => ({
+        ...fields,
+        client_id,
+        account_id,
+        sort_order: Number(count?.n ?? 0) + i,
+      })),
+    );
+  } catch (e) {
+    return fail(e, DUPLICATE_PRODUCT);
+  }
   refresh();
   return { ok: true };
 }
 
-function duplicateProduct(error: { code?: string; message: string }) {
-  return error.code === "23505"
-    ? "That project already exists on this store for this client."
-    : error.message;
-}
-
 /** The Play Console details shared by every app of a client. */
 export async function saveClientPlayDetails(fd: FormData): Promise<ActionResult> {
+  await requireUser();
   const id = str(fd, "id");
   // Only what this form sent: the Play and App Store forms show different
   // fields, and saving one must not wipe the other's.
@@ -531,15 +508,18 @@ export async function saveClientPlayDetails(fd: FormData): Promise<ActionResult>
   const update = Object.fromEntries(
     fields.filter((f) => fd.has(f)).map((f) => [f, nullable(fd, f)]),
   );
-  const supabase = await db();
-  const { error } = await supabase.from("clients").update(update).eq("id", id);
-  if (error) return { ok: false, error: error.message };
+  try {
+    await updateById("clients", id, update);
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true, id };
 }
 
 /** One app's Play Console listing and App Review login. */
 export async function saveProductListing(fd: FormData): Promise<ActionResult> {
+  await requireUser();
   const id = str(fd, "id");
   const tooLong = (field: string, limit: number, label: string) => {
     const v = nullable(fd, field);
@@ -586,64 +566,63 @@ export async function saveProductListing(fd: FormData): Promise<ActionResult> {
   const update = Object.fromEntries(
     fields.filter((f) => fd.has(f)).map((f) => [f, nullable(fd, f)]),
   );
-
-  const supabase = await db();
-  const { error } = await supabase.from("products").update(update).eq("id", id);
-  if (error) return { ok: false, error: error.message };
+  try {
+    await updateById("products", id, update);
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true, id };
 }
 
 /** Archived apps stay in history but aren't submitted in new releases. */
 export async function setProductArchived(id: string, archived: boolean): Promise<ActionResult> {
-  const supabase = await db();
-  const { error } = await supabase.from("products").update({ archived }).eq("id", id);
-  if (error) return { ok: false, error: error.message };
+  await requireUser();
+  try {
+    await updateById("products", id, { archived });
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true };
 }
 
 /** Only apps never submitted can be deleted; the rest are archived. */
 export async function deleteProduct(id: string): Promise<ActionResult> {
-  const supabase = await db();
-  const { count } = await supabase
-    .from("apps")
-    .select("id", { count: "exact", head: true })
-    .eq("product_id", id);
+  await requireUser();
+  const used = await row<{ n: number }>("SELECT COUNT(*) AS n FROM apps WHERE product_id = ?", [id]);
+  const count = Number(used?.n ?? 0);
   if (count) {
     return {
       ok: false,
       error: `This app has ${count} submission${count === 1 ? "" : "s"} in past releases. Archive it instead.`,
     };
   }
-  const { error } = await supabase.from("products").delete().eq("id", id);
-  if (error) return { ok: false, error: error.message };
+  try {
+    await exec("DELETE FROM products WHERE id = ?", [id]);
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true };
 }
 
 // ---------------------------------------------------------------- keystores
 
-/** Store a keystore file and point the keystore at it; returns an error message. */
-async function uploadKeystoreFile(
-  supabase: Awaited<ReturnType<typeof db>>,
+/** Store a keystore file on disk and point the keystore at it; returns the stored path. */
+async function storeKeystoreFile(
   keystoreId: string,
   file: File,
-): Promise<string | null> {
-  const safeName = file.name.replace(/[^\w.\-]+/g, "_");
-  const path = `keystores/${keystoreId}/${Date.now()}-${safeName}`;
-  const { error } = await supabase.storage
-    .from(JKS_BUCKET)
-    .upload(path, file, { contentType: "application/octet-stream" });
-  if (error) return error.message;
-  const { error: updateError } = await supabase
-    .from("keystores")
-    .update({ file_path: path, file_name: file.name })
-    .eq("id", keystoreId);
-  return updateError?.message ?? null;
+  conn?: PoolConnection,
+): Promise<string> {
+  const relative = `keystores/${keystoreId}/${Date.now()}-${safeFileName(file.name)}`;
+  await saveUpload("jks", relative, file);
+  await updateById("keystores", keystoreId, { file_path: relative, file_name: file.name }, conn ?? pool);
+  return relative;
 }
 
 export async function saveKeystore(fd: FormData): Promise<ActionResult> {
+  await requireUser();
   const id = str(fd, "id");
   const client_id = str(fd, "client_id");
   const name = str(fd, "name");
@@ -653,7 +632,6 @@ export async function saveKeystore(fd: FormData): Promise<ActionResult> {
   const upload = file instanceof File && file.size > 0 ? file : null;
   const removeFile = str(fd, "file_remove") === "1";
 
-  const supabase = await db();
   const payload = {
     client_id,
     name,
@@ -661,98 +639,81 @@ export async function saveKeystore(fd: FormData): Promise<ActionResult> {
     note: nullable(fd, "note"),
   };
 
-  let previousPath: string | null = null;
-  if (id && (upload || removeFile)) {
-    const { data } = await supabase
-      .from("keystores")
-      .select("file_path")
-      .eq("id", id)
-      .maybeSingle();
-    previousPath = data?.file_path ?? null;
+  const previousPath =
+    id && (upload || removeFile)
+      ? ((await row<{ file_path: string | null }>("SELECT file_path FROM keystores WHERE id = ?", [id]))
+          ?.file_path ?? null)
+      : null;
+
+  let savedId: string;
+  try {
+    savedId = id ? (await updateById("keystores", id, payload), id) : await insert("keystores", payload);
+  } catch (e) {
+    return fail(e);
   }
 
-  const { data: saved, error } = id
-    ? await supabase.from("keystores").update(payload).eq("id", id).select("id").single()
-    : await supabase.from("keystores").insert(payload).select("id").single();
-
-  if (error) return { ok: false, error: error.message };
-
   if (upload) {
-    const uploadError = await uploadKeystoreFile(supabase, saved.id, upload);
-    if (uploadError) {
+    try {
+      await storeKeystoreFile(savedId, upload);
+    } catch (e) {
       refresh();
-      return {
-        ok: false,
-        error: `Keystore saved, but the file upload failed: ${uploadError}`,
-      };
+      return { ok: false, error: `Keystore saved, but the file upload failed: ${errorMessage(e)}` };
     }
-    if (previousPath) await supabase.storage.from(JKS_BUCKET).remove([previousPath]);
+    await removeUpload("jks", previousPath);
   } else if (removeFile && previousPath) {
-    await supabase
-      .from("keystores")
-      .update({ file_path: null, file_name: null })
-      .eq("id", saved.id);
-    await supabase.storage.from(JKS_BUCKET).remove([previousPath]);
+    await updateById("keystores", savedId, { file_path: null, file_name: null });
+    await removeUpload("jks", previousPath);
   }
 
   refresh();
-  return { ok: true, id: saved.id };
+  return { ok: true, id: savedId };
 }
 
 /** Apps that used it are unlinked, not deleted. */
 export async function deleteKeystore(id: string): Promise<ActionResult> {
-  const supabase = await db();
-  const { data } = await supabase
-    .from("keystores")
-    .select("file_path")
-    .eq("id", id)
-    .maybeSingle();
-  const { error } = await supabase.from("keystores").delete().eq("id", id);
-  if (error) return { ok: false, error: error.message };
-  if (data?.file_path) await supabase.storage.from(JKS_BUCKET).remove([data.file_path]);
+  await requireUser();
+  const keystore = await row<{ file_path: string | null }>("SELECT file_path FROM keystores WHERE id = ?", [id]);
+  try {
+    await exec("DELETE FROM keystores WHERE id = ?", [id]);
+  } catch (e) {
+    return fail(e);
+  }
+  await removeUpload("jks", keystore?.file_path);
   refresh();
   return { ok: true };
 }
 
-/** Short-lived link that downloads the keystore file under its original name. */
+/** Where the browser downloads the keystore file (signed-in team members only). */
 export async function getKeystoreDownloadUrl(
   keystoreId: string,
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
-  const supabase = await db();
-  const { data } = await supabase
-    .from("keystores")
-    .select("file_path, file_name")
-    .eq("id", keystoreId)
-    .maybeSingle();
-  if (!data?.file_path) return { ok: false, error: "This keystore has no file." };
-
-  const { data: signed, error } = await supabase.storage
-    .from(JKS_BUCKET)
-    .createSignedUrl(data.file_path, 60, { download: data.file_name ?? true });
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, url: signed.signedUrl };
+  await requireUser();
+  const keystore = await row<{ file_path: string | null }>(
+    "SELECT file_path FROM keystores WHERE id = ?",
+    [keystoreId],
+  );
+  if (!keystore?.file_path) return { ok: false, error: "This keystore has no file." };
+  return { ok: true, url: `/api/keystores/${encodeURIComponent(keystoreId)}/download` };
 }
 
 // --------------------------------------------------------------------- apps
 
 /** Edit one submission — the per-release facts. Identity lives on the product. */
 export async function saveApp(fd: FormData): Promise<ActionResult> {
+  await requireUser();
   const id = str(fd, "id");
   if (!id) return { ok: false, error: "Add apps to a release from the client's app list." };
-
-  const supabase = await db();
-  const { error } = await supabase
-    .from("apps")
-    .update({
+  try {
+    await updateById("apps", id, {
       status: str(fd, "status") as AppStatus,
       assigned_to: nullable(fd, "assigned_to"),
       build_version: nullable(fd, "build_version"),
       flutter_version: nullable(fd, "flutter_version"),
       note: nullable(fd, "note"),
-    })
-    .eq("id", id);
-
-  if (error) return { ok: false, error: error.message };
+    });
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true };
 }
@@ -766,30 +727,35 @@ export async function updateAppField(
   field: InlineField,
   value: string | null,
 ): Promise<ActionResult> {
+  await requireUser();
   if (!INLINE_FIELDS.includes(field)) return { ok: false, error: "That field can't be edited here." };
-  const trimmed = value?.trim() || null;
-  const supabase = await db();
-  const { error } = await supabase
-    .from("apps")
-    .update({ [field]: trimmed })
-    .eq("id", id);
-  if (error) return { ok: false, error: error.message };
+  try {
+    await updateById("apps", id, { [field]: value?.trim() || null });
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true };
 }
 
 export async function setAppStatus(id: string, status: AppStatus): Promise<ActionResult> {
-  const supabase = await db();
-  const { error } = await supabase.from("apps").update({ status }).eq("id", id);
-  if (error) return { ok: false, error: error.message };
+  await requireUser();
+  try {
+    await updateById("apps", id, { status });
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true };
 }
 
 export async function deleteApp(id: string): Promise<ActionResult> {
-  const supabase = await db();
-  const { error } = await supabase.from("apps").delete().eq("id", id);
-  if (error) return { ok: false, error: error.message };
+  await requireUser();
+  try {
+    await exec("DELETE FROM apps WHERE id = ?", [id]);
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true };
 }
@@ -823,9 +789,9 @@ export type ImportRow = {
  * rather than duplicates.
  */
 export async function importRows(
-  rows: ImportRow[],
+  rows_: ImportRow[],
 ): Promise<{ ok: boolean; error?: string; created: number; updated: number }> {
-  const supabase = await db();
+  await requireUser();
   let created = 0;
   let updated = 0;
 
@@ -836,155 +802,73 @@ export async function importRows(
     const key = name.trim().toLowerCase();
     if (!key) return null;
     if (memberIds.has(key)) return memberIds.get(key)!;
+    const found = await row<{ id: string }>("SELECT id FROM team_members WHERE LOWER(name) = ?", [key]);
+    const id = found?.id ?? (await insert("team_members", { name: name.trim() }));
+    memberIds.set(key, id);
+    return id;
+  }
 
-    const { data: found } = await supabase
-      .from("team_members")
-      .select("id")
-      .ilike("name", name.trim())
-      .maybeSingle();
-
-    let id = found?.id as string | undefined;
-    if (!id) {
-      const { data, error } = await supabase
-        .from("team_members")
-        .insert({ name: name.trim() })
-        .select("id")
-        .single();
-      if (error) throw error;
-      id = data.id;
-    }
-    memberIds.set(key, id!);
-    return id!;
+  /** The id of the row matching `where`, made from `values` if there isn't one. */
+  async function findOrCreate(
+    table: string,
+    where: Record<string, string>,
+    values: Record<string, unknown>,
+  ): Promise<string> {
+    const keys = Object.keys(where);
+    const found = await row<{ id: string }>(
+      `SELECT id FROM \`${table}\` WHERE ${keys.map((k) => `\`${k}\` = ?`).join(" AND ")}`,
+      keys.map((k) => where[k]),
+    );
+    return found?.id ?? insert(table, { ...where, ...values });
   }
 
   const clientIds = new Map<string, string>();
   const accountIds = new Map<string, string>();
   const releaseIds = new Map<string, string>();
   const productIds = new Map<string, string>();
+  const cached = async (map: Map<string, string>, key: string, make: () => Promise<string>) => {
+    const hit = map.get(key);
+    if (hit) return hit;
+    const id = await make();
+    map.set(key, id);
+    return id;
+  };
 
   try {
-    for (const r of rows) {
-      // ---- client
-      let clientId = clientIds.get(r.ticket);
-      if (!clientId) {
-        const { data: found } = await supabase
-          .from("clients")
-          .select("id")
-          .eq("ticket", r.ticket)
-          .maybeSingle();
-
-        if (found) {
-          clientId = found.id;
-        } else {
-          const { data, error } = await supabase
-            .from("clients")
-            .insert({ ticket: r.ticket, name: r.client_name })
-            .select("id")
-            .single();
-          if (error) throw error;
-          clientId = data.id;
-        }
-        clientIds.set(r.ticket, clientId!);
-      }
-
-      // ---- store account
-      const accountKey = `${clientId}:${r.platform}`;
-      let accountId = accountIds.get(accountKey);
-      if (!accountId) {
-        const { data: found } = await supabase
-          .from("publisher_accounts")
-          .select("id")
-          .eq("client_id", clientId!)
-          .eq("platform", r.platform)
-          .maybeSingle();
-
-        if (found) {
-          accountId = found.id;
-        } else {
-          const { data, error } = await supabase
-            .from("publisher_accounts")
-            .insert({
-              client_id: clientId!,
-              platform: r.platform,
-              account_name: r.account_name,
-              account_type: r.account_type,
-            })
-            .select("id")
-            .single();
-          if (error) throw error;
-          accountId = data.id;
-        }
-        accountIds.set(accountKey, accountId!);
-      }
-
-      // ---- release
-      const releaseKey = `${clientId}:${r.release_version}`;
-      let releaseId = releaseIds.get(releaseKey);
-      if (!releaseId) {
-        const { data: found } = await supabase
-          .from("releases")
-          .select("id")
-          .eq("client_id", clientId!)
-          .eq("version", r.release_version)
-          .maybeSingle();
-
-        if (found) {
-          releaseId = found.id;
-        } else {
-          const { data, error } = await supabase
-            .from("releases")
-            .insert({
-              client_id: clientId!,
-              version: r.release_version,
-              title: r.release_title || null,
-              assigned_to: await memberId(r.assigned_to),
-            })
-            .select("id")
-            .single();
-          if (error) throw error;
-          releaseId = data.id;
-        }
-        releaseIds.set(releaseKey, releaseId!);
-      }
-
-      // ---- product (the client's permanent app)
-      const productKey = `${accountId}:${r.project_name}`;
-      let productId = productIds.get(productKey);
-      if (!productId) {
-        const { data: found } = await supabase
-          .from("products")
-          .select("id")
-          .eq("account_id", accountId!)
-          .eq("project_name", r.project_name)
-          .maybeSingle();
-
-        if (found) {
-          productId = found.id;
-        } else {
-          const { data, error } = await supabase
-            .from("products")
-            .insert({ client_id: clientId!, account_id: accountId!, project_name: r.project_name })
-            .select("id")
-            .single();
-          if (error) throw error;
-          productId = data.id;
-        }
-        productIds.set(productKey, productId!);
-      }
+    for (const r of rows_) {
+      const clientId = await cached(clientIds, r.ticket, () =>
+        findOrCreate("clients", { ticket: r.ticket }, { name: r.client_name }),
+      );
+      const accountId = await cached(accountIds, `${clientId}:${r.platform}`, () =>
+        findOrCreate(
+          "publisher_accounts",
+          { client_id: clientId, platform: r.platform },
+          { account_name: r.account_name, account_type: r.account_type },
+        ),
+      );
+      const releaseId = await cached(releaseIds, `${clientId}:${r.release_version}`, async () =>
+        findOrCreate(
+          "releases",
+          { client_id: clientId, version: r.release_version },
+          { title: r.release_title || null, assigned_to: await memberId(r.assigned_to), started_on: today() },
+        ),
+      );
+      const productId = await cached(productIds, `${accountId}:${r.project_name}`, () =>
+        findOrCreate(
+          "products",
+          { account_id: accountId, project_name: r.project_name },
+          { client_id: clientId },
+        ),
+      );
 
       // The sheet's name and link describe the app itself.
       const identity: Record<string, string> = {};
       if (r.app_name) identity.app_name = r.app_name;
       if (r.store_url) identity.store_url = r.store_url;
-      if (Object.keys(identity).length) {
-        const { error } = await supabase.from("products").update(identity).eq("id", productId!);
-        if (error) throw error;
-      }
+      await updateById("products", productId, identity);
 
       // ---- submission
       const payload = {
-        release_id: releaseId!,
-        product_id: productId!,
         status: r.status,
         assigned_to: await memberId(r.app_assigned_to),
         build_version: r.build_version || null,
@@ -992,27 +876,27 @@ export async function importRows(
         jks: r.jks || null,
         note: r.note || null,
       };
-
-      const { data: existingApp } = await supabase
-        .from("apps")
-        .select("id")
-        .eq("release_id", releaseId!)
-        .eq("product_id", productId!)
-        .maybeSingle();
-
-      if (existingApp) {
-        const { error } = await supabase.from("apps").update(payload).eq("id", existingApp.id);
-        if (error) throw error;
+      const existing = await row<{ id: string }>(
+        "SELECT id FROM apps WHERE release_id = ? AND product_id = ?",
+        [releaseId, productId],
+      );
+      if (existing) {
+        await updateById("apps", existing.id, payload);
         updated++;
       } else {
-        const { error } = await supabase.from("apps").insert(payload);
-        if (error) throw error;
+        await insert("apps", {
+          ...payload,
+          release_id: releaseId,
+          product_id: productId,
+          // Filled from the product by the database.
+          account_id: "",
+          project_name: "",
+        });
         created++;
       }
     }
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    return { ok: false, error: message, created, updated };
+    return { ok: false, error: errorMessage(e), created, updated };
   }
 
   refresh();
@@ -1021,7 +905,6 @@ export async function importRows(
 
 // ------------------------------------------------------------ product lines
 
-const LOGO_BUCKET = "logos";
 const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
 const LOGO_MAX_BYTES = 1024 * 1024;
 
@@ -1030,6 +913,7 @@ const LOGO_MAX_BYTES = 1024 * 1024;
  * the form). The project list is replaced as a whole.
  */
 export async function saveProductLine(fd: FormData): Promise<ActionResult> {
+  await requireUser();
   const id = str(fd, "id");
   const name = str(fd, "name");
   if (!name) return { ok: false, error: "Give the product line a name." };
@@ -1053,101 +937,76 @@ export async function saveProductLine(fd: FormData): Promise<ActionResult> {
   }
   const removeLogo = str(fd, "logo_remove") === "1";
 
-  const supabase = await db();
-
   // A project belongs to one line; say which line already has it.
   if (projects.length) {
-    const { data: taken } = await supabase
-      .from("product_line_projects")
-      .select("project_name, product_lines(name)")
-      .in("project_name", projects)
-      .neq("line_id", id || "00000000-0000-0000-0000-000000000000");
-    if (taken?.length) {
-      const t = taken[0] as unknown as { project_name: string; product_lines: { name: string } };
-      return {
-        ok: false,
-        error: `"${t.project_name}" is already in ${t.product_lines?.name ?? "another line"}.`,
-      };
-    }
+    const taken = await row<{ project_name: string; line: string }>(
+      `SELECT plp.project_name, pl.name AS line
+         FROM product_line_projects plp JOIN product_lines pl ON pl.id = plp.line_id
+        WHERE plp.project_name IN (${placeholders(projects.length)}) AND plp.line_id <> ?
+        LIMIT 1`,
+      [...projects, id || ""],
+    );
+    if (taken) return { ok: false, error: `"${taken.project_name}" is already in ${taken.line}.` };
   }
 
-  let previousLogo: string | null = null;
-  if (id) {
-    const { data } = await supabase
-      .from("product_lines")
-      .select("logo_path")
-      .eq("id", id)
-      .maybeSingle();
-    previousLogo = data?.logo_path ?? null;
-  }
+  const previousLogo = id
+    ? ((await row<{ logo_path: string | null }>("SELECT logo_path FROM product_lines WHERE id = ?", [id]))
+        ?.logo_path ?? null)
+    : null;
 
-  const { data: saved, error } = id
-    ? await supabase.from("product_lines").update({ name }).eq("id", id).select("id").single()
-    : await (async () => {
-        const { count } = await supabase
-          .from("product_lines")
-          .select("id", { count: "exact", head: true });
-        return supabase
-          .from("product_lines")
-          .insert({ name, sort_order: count ?? 0 })
-          .select("id")
-          .single();
-      })();
-  if (error) {
-    return {
-      ok: false,
-      error: error.code === "23505" ? `There's already a line called ${name}.` : error.message,
-    };
-  }
-
-  // ---- projects
-  const { error: clearError } = await supabase
-    .from("product_line_projects")
-    .delete()
-    .eq("line_id", saved.id);
-  if (clearError) return { ok: false, error: clearError.message };
-  if (projects.length) {
-    const { error: projectError } = await supabase
-      .from("product_line_projects")
-      .insert(
-        projects.map((project_name, i) => ({ line_id: saved.id, project_name, sort_order: i })),
+  let savedId: string;
+  try {
+    savedId = await transaction(async (conn) => {
+      let lineId = id;
+      if (lineId) {
+        await updateById("product_lines", lineId, { name }, conn);
+      } else {
+        const count = await row<{ n: number }>("SELECT COUNT(*) AS n FROM product_lines", [], conn);
+        lineId = await insert("product_lines", { name, sort_order: Number(count?.n ?? 0) }, conn);
+      }
+      // ---- projects
+      await exec("DELETE FROM product_line_projects WHERE line_id = ?", [lineId], conn);
+      await insertMany(
+        "product_line_projects",
+        projects.map((project_name, i) => ({ line_id: lineId, project_name, sort_order: i })),
+        conn,
       );
-    if (projectError) return { ok: false, error: projectError.message };
+      return lineId;
+    });
+  } catch (e) {
+    return fail(e, `There's already a line called ${name}.`);
   }
 
   // ---- logo
   if (logo) {
-    const safeName = logo.name.replace(/[^\w.\-]+/g, "_");
-    const path = `product-lines/${saved.id}/${Date.now()}-${safeName}`;
-    const { error: uploadError } = await supabase.storage
-      .from(LOGO_BUCKET)
-      .upload(path, logo, { contentType: logo.type });
-    if (uploadError) {
+    const relative = `product-lines/${savedId}/${Date.now()}-${safeFileName(logo.name)}`;
+    try {
+      await saveUpload("logos", relative, logo);
+    } catch (e) {
       refresh();
-      return { ok: false, error: `Saved, but the logo upload failed: ${uploadError.message}` };
+      return { ok: false, error: `Saved, but the logo upload failed: ${errorMessage(e)}` };
     }
-    await supabase.from("product_lines").update({ logo_path: path }).eq("id", saved.id);
-    if (previousLogo) await supabase.storage.from(LOGO_BUCKET).remove([previousLogo]);
+    await updateById("product_lines", savedId, { logo_path: relative });
+    await removeUpload("logos", previousLogo);
   } else if (removeLogo && previousLogo) {
-    await supabase.from("product_lines").update({ logo_path: null }).eq("id", saved.id);
-    await supabase.storage.from(LOGO_BUCKET).remove([previousLogo]);
+    await updateById("product_lines", savedId, { logo_path: null });
+    await removeUpload("logos", previousLogo);
   }
 
   refresh();
-  return { ok: true, id: saved.id };
+  return { ok: true, id: savedId };
 }
 
 /** Apps keep their project names; they just lose the line's logo. */
 export async function deleteProductLine(id: string): Promise<ActionResult> {
-  const supabase = await db();
-  const { data } = await supabase
-    .from("product_lines")
-    .select("logo_path")
-    .eq("id", id)
-    .maybeSingle();
-  const { error } = await supabase.from("product_lines").delete().eq("id", id);
-  if (error) return { ok: false, error: error.message };
-  if (data?.logo_path) await supabase.storage.from(LOGO_BUCKET).remove([data.logo_path]);
+  await requireUser();
+  const line = await row<{ logo_path: string | null }>("SELECT logo_path FROM product_lines WHERE id = ?", [id]);
+  try {
+    await exec("DELETE FROM product_lines WHERE id = ?", [id]);
+  } catch (e) {
+    return fail(e);
+  }
+  await removeUpload("logos", line?.logo_path);
   refresh();
   return { ok: true };
 }
@@ -1155,22 +1014,22 @@ export async function deleteProductLine(id: string): Promise<ActionResult> {
 // ------------------------------------------------------------------- team
 
 export async function saveTeamMember(fd: FormData): Promise<ActionResult> {
+  await requireUser();
   const id = str(fd, "id");
   const name = str(fd, "name");
   if (!name) return { ok: false, error: "Name is required." };
 
-  const supabase = await db();
   const payload = {
     name,
     email: nullable(fd, "email"),
     active: fd.get("active") !== null,
   };
-
-  const { error } = id
-    ? await supabase.from("team_members").update(payload).eq("id", id)
-    : await supabase.from("team_members").insert(payload);
-
-  if (error) return { ok: false, error: error.message };
+  try {
+    if (id) await updateById("team_members", id, payload);
+    else await insert("team_members", payload);
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true };
 }
@@ -1179,21 +1038,24 @@ export async function saveTeamMember(fd: FormData): Promise<ActionResult> {
  * Members are referenced by assignments, so deactivating is the usual move —
  * it hides them from the pickers without rewriting history.
  */
-export async function setTeamMemberActive(
-  id: string,
-  active: boolean,
-): Promise<ActionResult> {
-  const supabase = await db();
-  const { error } = await supabase.from("team_members").update({ active }).eq("id", id);
-  if (error) return { ok: false, error: error.message };
+export async function setTeamMemberActive(id: string, active: boolean): Promise<ActionResult> {
+  await requireUser();
+  try {
+    await updateById("team_members", id, { active });
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true };
 }
 
 export async function deleteTeamMember(id: string): Promise<ActionResult> {
-  const supabase = await db();
-  const { error } = await supabase.from("team_members").delete().eq("id", id);
-  if (error) return { ok: false, error: error.message };
+  await requireUser();
+  try {
+    await exec("DELETE FROM team_members WHERE id = ?", [id]);
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true };
 }
@@ -1201,8 +1063,7 @@ export async function deleteTeamMember(id: string): Promise<ActionResult> {
 // --------------------------------------------------------------------- auth
 
 export async function signOut() {
-  const supabase = await db();
-  await supabase.auth.signOut();
+  (await cookies()).delete(SESSION_COOKIE);
   redirect("/login");
 }
 
@@ -1213,25 +1074,24 @@ export async function signOut() {
  * replaces the old one, which stops working.
  */
 export async function createIntakeLink(clientId: string): Promise<ActionResult> {
-  const bytes = crypto.getRandomValues(new Uint8Array(24));
-  const token = Buffer.from(bytes).toString("base64url");
-  const supabase = await db();
-  const { error } = await supabase
-    .from("clients")
-    .update({ intake_token: token })
-    .eq("id", clientId);
-  if (error) return { ok: false, error: error.message };
+  await requireUser();
+  const token = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString("base64url");
+  try {
+    await updateById("clients", clientId, { intake_token: token });
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true, id: token };
 }
 
 export async function disableIntakeLink(clientId: string): Promise<ActionResult> {
-  const supabase = await db();
-  const { error } = await supabase
-    .from("clients")
-    .update({ intake_token: null })
-    .eq("id", clientId);
-  if (error) return { ok: false, error: error.message };
+  await requireUser();
+  try {
+    await updateById("clients", clientId, { intake_token: null });
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true };
 }
@@ -1320,7 +1180,7 @@ function intakeProblem(fields: Record<string, string | undefined>, owner?: strin
 
 /**
  * The client's own submission from the intake form — no login; the link's
- * token is checked by the database, which saves only these fields. The same
+ * token decides which client it is, and only these fields are saved. The same
  * rules as the form are checked again here, so nothing skips them.
  */
 export async function submitIntake(
@@ -1338,7 +1198,7 @@ export async function submitIntake(
   const clientProblem = intakeProblem(clientData);
   if (clientProblem) return { ok: false, error: clientProblem };
 
-  const appData = [];
+  const appData: ({ id: string } & Partial<Record<(typeof INTAKE_APP_FIELDS)[number], string>>)[] = [];
   for (const app of apps) {
     const fields = pick(app, INTAKE_APP_FIELDS);
     const problem = intakeProblem(fields, fields.app_name || "An app");
@@ -1346,7 +1206,7 @@ export async function submitIntake(
     appData.push({ id: String(app.id), ...fields });
   }
 
-  const accountData = [];
+  const accountData: ({ id: string } & Partial<Record<(typeof INTAKE_ACCOUNT_FIELDS)[number], string>>)[] = [];
   for (const account of accounts) {
     const fields = pick(account, INTAKE_ACCOUNT_FIELDS);
     const problem = intakeProblem(fields, fields.account_name || "A store account");
@@ -1360,31 +1220,61 @@ export async function submitIntake(
     accountData.push({ id: String(account.id), ...fields });
   }
 
-  const supabase = await db();
-  const { error } = await supabase.rpc("intake_submit", {
-    p_token: token,
-    p_client: clientData,
-    p_apps: appData,
-    p_accounts: accountData,
-  });
-  if (error) return { ok: false, error: error.message };
+  if (!token || token.length < 24) return { ok: false, error: "This link is not valid." };
+  const owner = await row<{ id: string }>(
+    "SELECT id FROM clients WHERE intake_token = ? AND archived = FALSE",
+    [token],
+  );
+  if (!owner) {
+    return { ok: false, error: "This link is no longer active. Ask the team for a new one." };
+  }
+
+  // A sent field's new value (blank = cleared); an unsent field keeps its own.
+  const blankToNull = (values: Record<string, string | undefined>) =>
+    Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v ? v : null]));
+
+  try {
+    await transaction(async (conn) => {
+      await updateById(
+        "clients",
+        owner.id,
+        { ...blankToNull(clientData), intake_submitted_at: new Date() },
+        conn,
+      );
+
+      for (const { id, demo_password, app_name, ...fields } of appData) {
+        const update: Record<string, unknown> = blankToNull(fields);
+        if (app_name !== undefined) update.app_name = app_name; // never NULL
+        // A blank password keeps the saved one; the form never shows it.
+        if (demo_password) update.demo_password = demo_password;
+        if (Object.keys(update).length === 0) continue;
+        // Only this client's own active apps.
+        await exec("UPDATE products SET ? WHERE id = ? AND client_id = ? AND archived = FALSE", [update, id, owner.id], conn);
+      }
+
+      for (const { id, account_type, access_method, login_password, account_name, ...fields } of accountData) {
+        const update: Record<string, unknown> = blankToNull(fields);
+        if (account_name !== undefined) update.account_name = account_name; // never NULL
+        if (account_type) update.account_type = account_type;
+        if (access_method !== undefined) update.access_method = access_method || null;
+        if (login_password) update.login_password = login_password;
+        if (Object.keys(update).length === 0) continue;
+        await exec("UPDATE publisher_accounts SET ? WHERE id = ? AND client_id = ?", [update, id, owner.id], conn);
+      }
+    });
+  } catch (e) {
+    return fail(e);
+  }
   refresh();
   return { ok: true };
 }
 
 // -------------------------------------------------------------- store watch
 
-/**
- * Look one app up on its store right now (the hourly check does the rest).
- * Runs the store-watch Edge Function as the signed-in team member.
- */
+/** Look one app up on its store right now (the hourly check does the rest). */
 export async function checkStoreNow(productId: string): Promise<ActionResult> {
-  const supabase = await db();
-  const { data, error } = await supabase.functions.invoke("store-watch", {
-    body: { productId },
-  });
-  if (error) return { ok: false, error: error.message };
-  const result = (data as { results?: { error?: string }[] } | null)?.results?.[0];
+  await requireUser();
+  const [result] = await runStoreWatch({ productId });
   if (!result) return { ok: false, error: "This app has no package name or bundle ID to look up." };
   if (result.error) return { ok: false, error: result.error };
   refresh();

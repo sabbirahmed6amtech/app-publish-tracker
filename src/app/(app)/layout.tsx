@@ -2,7 +2,7 @@ import { Sidebar, type SidebarClient } from "@/components/Sidebar";
 import { TopBar, type SearchItem } from "@/components/TopBar";
 import { NewClientWizard } from "@/components/dialogs/NewClientWizard";
 import { PageContainer } from "@/components/PageContainer";
-import { createClient } from "@/lib/supabase/server";
+import { getSession } from "@/lib/auth";
 import {
   getClients,
   getProductLines,
@@ -16,8 +16,6 @@ import { releaseState } from "@/lib/constants";
 export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient();
-
   let clients: SidebarClient[] = [];
   let search: SearchItem[] = [];
   let lines: ProductLine[] = [];
@@ -28,14 +26,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   try {
     // Session, roster and client tree are independent — fetch them together.
     const [auth, roster, tree, productLines] = await Promise.all([
-      supabase.auth.getUser(),
+      getSession(),
       getTeam(),
       getClients(),
       getProductLines(),
     ]);
     lines = productLines;
     suggestions = projectSuggestions(productLines, tree);
-    user = auth.data.user;
+    user = auth ? { email: auth.email } : null;
     const names = teamIndex(roster);
     clients = tree.map((c) => ({
       id: c.id,
@@ -92,9 +90,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <div className="card mb-5 border-bad/30 bg-bad-soft p-4 text-[13px] text-bad">
               <strong className="font-semibold">Could not load data.</strong> {loadError}
               <div className="mt-1 text-bad">
-                If the tables look wrong, re-run{" "}
-                <code className="font-mono">supabase/schema.sql</code> — it resets to the
-                release-based schema.
+                Is MySQL running, and has{" "}
+                <code className="font-mono">database/schema.sql</code> been imported into the
+                database in <code className="font-mono">DATABASE_URL</code>?
               </div>
             </div>
           )}

@@ -11,7 +11,7 @@ export type AppStatus =
   | "production"
   | "on_hold";
 
-/** Someone work can be assigned to. Synced from Supabase Auth users. */
+/** Someone work can be assigned to. Every login gets one automatically. */
 export type TeamMember = {
   id: string;
   user_id: string | null;

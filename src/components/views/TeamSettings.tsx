@@ -20,10 +20,9 @@ export async function TeamSettings() {
     <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-[13px] text-muted-foreground">
-          {active.length} active · {team.length} total. Anyone you add under{" "}
-          <strong className="font-medium text-foreground">Authentication → Users</strong> in
-          Supabase appears here automatically and can be assigned work. Add someone here
-          directly if they do the work but never sign in.
+          {active.length} active · {team.length} total. Everyone with a login appears here
+          automatically and can be assigned work. Add someone here directly if they do the
+          work but never sign in.
         </p>
         <TeamMemberDialog trigger="+ Add member" className="btn btn-primary" />
       </div>
@@ -54,7 +53,7 @@ export async function TeamSettings() {
                   </td>
                   <td className="td">
                     {m.user_id ? (
-                      <Tag>Supabase Auth</Tag>
+                      <Tag>Has login</Tag>
                     ) : (
                       <span className="text-[12px] text-muted-foreground/80">No login</span>
                     )}
@@ -111,7 +110,7 @@ export async function TeamSettings() {
 
         {team.length === 0 && (
           <p className="px-4 py-10 text-center text-[13px] text-muted-foreground/80">
-            No members yet. Add a Supabase Auth user, or add someone here directly.
+            No members yet. Add someone here directly.
           </p>
         )}
       </section>

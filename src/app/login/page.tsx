@@ -2,13 +2,14 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { signIn } from "@/lib/authActions";
 import { Spinner } from "@/components/Spinner";
 
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/";
+  const wanted = params.get("next") || "/";
+  const next = wanted.startsWith("/") && !wanted.startsWith("//") ? wanted : "/";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,11 +21,10 @@ function LoginForm() {
     setBusy(true);
     setError(null);
 
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const result = await signIn(email, password);
 
-    if (error) {
-      setError(error.message);
+    if (!result.ok) {
+      setError(result.error);
       setBusy(false);
       return;
     }
@@ -87,8 +87,7 @@ function LoginForm() {
       </button>
 
       <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground/80">
-        Accounts are created by an admin in the Supabase dashboard under
-        Authentication → Users.
+        No account yet? Ask an admin to add you.
       </p>
     </form>
   );
