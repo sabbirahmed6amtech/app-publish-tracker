@@ -42,7 +42,7 @@ export function publishData(client: Client, product: Product): PublishAppData {
     storeCategory: v(product.play_category),
     privacyUrl: v(client.play_privacy_url),
     deleteAccountUrl: v(client.play_delete_account_url),
-    accessInstructions: v(product.demo_instructions),
+    accessInstructions: v(product.demo_instructions) || "Demo account",
     accessLoginEmail: v(product.demo_login),
     accessLoginPassword: v(product.demo_password),
     accessDetails: v(product.demo_details),

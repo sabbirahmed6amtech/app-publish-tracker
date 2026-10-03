@@ -20,6 +20,7 @@ import { ProductDialog } from "@/components/dialogs/ProductDialog";
 import { ListingDialog } from "@/components/dialogs/ListingDialog";
 import { ClientPlayDialog } from "@/components/dialogs/ClientPlayDialog";
 import { PublishPanel } from "@/components/PublishPanel";
+import { IntakeLinkButton } from "@/components/IntakeLinkButton";
 import {
   publishChecks,
   publishChecksIos,
@@ -99,6 +100,11 @@ export default async function ClientPage({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <IntakeLinkButton
+            clientId={client.id}
+            token={client.intake_token}
+            submittedAt={client.intake_submitted_at}
+          />
           <ClientDialog client={client} trigger="Edit" className="btn btn-secondary" />
           <ReleaseDialog
             clientId={client.id}
@@ -543,6 +549,8 @@ function CredentialsTab({ client }: { client: ClientFull }) {
             <h2 className="text-[14px] font-semibold">Store details</h2>
             <p className="text-[12px] text-muted-foreground">
               Shared by every app of this client — the publisher fills these into each store.
+              {client.intake_submitted_at &&
+                ` The client last updated them through their form on ${formatDate(client.intake_submitted_at)}.`}
             </p>
           </div>
           <ClientPlayDialog client={client} />
@@ -596,6 +604,7 @@ function CredentialsTab({ client }: { client: ClientFull }) {
                     <CopyButton value={a.account_name} label="Copy account name" />
                   )}
                 </span>
+                <AccountAccess account={a} />
                 <Tag>{ACCOUNT_TYPES[a.account_type].label}</Tag>
                 <AccountDialog
                   clientId={client.id}
@@ -703,6 +712,33 @@ function CredentialsTab({ client }: { client: ClientFull }) {
 }
 
 // ---------------------------------------------------------------- helpers --
+
+/** How the team gets into this store account, as the client told us. */
+function AccountAccess({ account: a }: { account: ClientFull["publisher_accounts"][number] }) {
+  if (!a.access_method) {
+    return <span className="hidden text-[12px] text-muted-foreground/70 sm:inline">No access yet</span>;
+  }
+  if (a.access_method === "invite") {
+    return (
+      <span className="hidden min-w-0 items-center gap-1 text-[12px] text-muted-foreground sm:flex">
+        Invited
+        {a.access_email && <span className="truncate font-medium text-foreground">{a.access_email}</span>}
+      </span>
+    );
+  }
+  return (
+    <span className="hidden min-w-0 items-center gap-1 text-[12px] text-muted-foreground sm:flex">
+      Login
+      {a.access_email && (
+        <>
+          <span className="truncate font-medium text-foreground">{a.access_email}</span>
+          <CopyButton value={a.access_email} label="Copy login" />
+        </>
+      )}
+      {a.login_password && <CopyButton value={a.login_password} label="Copy password" />}
+    </span>
+  );
+}
 
 function EmptyState({
   title,

@@ -8,6 +8,8 @@ import type {
   AppStatus,
   Client,
   ClientFull,
+  Intake,
+  IntakeApp,
   Keystore,
   LineBadge,
   Product,
@@ -383,6 +385,25 @@ export async function trackerClient(ticket: string): Promise<TrackerClient | nul
           ? supabase.storage.from("logos").getPublicUrl(logo_path).data.publicUrl
           : null,
       })),
+    })),
+  };
+}
+
+/** The client intake form behind a private link, or null if the link isn't active. */
+export async function intakeForm(token: string): Promise<Intake | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("intake_get", { p_token: token });
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  const form = data as Omit<Intake, "apps"> & {
+    apps: (Omit<IntakeApp, "logo"> & { logo_path: string | null })[];
+  };
+  return {
+    ...form,
+    accounts: form.accounts ?? [],
+    apps: form.apps.map(({ logo_path, ...a }) => ({
+      ...a,
+      logo: logo_path ? supabase.storage.from("logos").getPublicUrl(logo_path).data.publicUrl : null,
     })),
   };
 }

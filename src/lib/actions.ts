@@ -1192,3 +1192,138 @@ export async function signOut() {
   await supabase.auth.signOut();
   redirect("/login");
 }
+
+// ------------------------------------------------------------ client intake
+
+/**
+ * A private link for the client to fill in their store details. A new link
+ * replaces the old one, which stops working.
+ */
+export async function createIntakeLink(clientId: string): Promise<ActionResult> {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  const token = Buffer.from(bytes).toString("base64url");
+  const supabase = await db();
+  const { error } = await supabase
+    .from("clients")
+    .update({ intake_token: token })
+    .eq("id", clientId);
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true, id: token };
+}
+
+export async function disableIntakeLink(clientId: string): Promise<ActionResult> {
+  const supabase = await db();
+  const { error } = await supabase
+    .from("clients")
+    .update({ intake_token: null })
+    .eq("id", clientId);
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true };
+}
+
+const INTAKE_CLIENT_FIELDS = [
+  "play_privacy_url",
+  "play_delete_account_url",
+  "play_contact_email",
+  "play_listing_email",
+  "play_contact_phone",
+  "play_website",
+  "play_default_language",
+  "store_support_url",
+  "store_marketing_url",
+  "review_contact_first_name",
+  "review_contact_last_name",
+  "review_contact_phone",
+  "review_contact_email",
+] as const;
+
+// Bundle IDs, categories, keywords and the like stay with the team.
+const INTAKE_APP_FIELDS = [
+  "app_name",
+  "short_description",
+  "long_description",
+  "demo_login",
+  "demo_password",
+  "demo_details",
+] as const;
+
+// The client's store accounts: name, type and how the team gets in.
+const INTAKE_ACCOUNT_FIELDS = [
+  "account_name",
+  "account_type",
+  "access_method",
+  "access_email",
+  "login_password",
+] as const;
+
+const URL_FIELDS = new Set([
+  "play_privacy_url",
+  "play_delete_account_url",
+  "play_website",
+  "store_support_url",
+  "store_marketing_url",
+]);
+const EMAIL_FIELDS = new Set(["play_contact_email", "play_listing_email", "review_contact_email"]);
+
+/**
+ * The client's own submission from the intake form — no login; the link's
+ * token is checked by the database, which saves only these fields.
+ */
+export async function submitIntake(
+  token: string,
+  client: Record<string, string>,
+  apps: ({ id: string } & Record<string, string>)[],
+  accounts: ({ id: string } & Record<string, string>)[] = [],
+): Promise<ActionResult> {
+  const pick = <K extends string>(from: Record<string, string>, keys: readonly K[]) =>
+    Object.fromEntries(
+      keys.filter((k) => typeof from[k] === "string").map((k) => [k, from[k].trim()]),
+    ) as Partial<Record<K, string>>;
+
+  const clientData = pick(client, INTAKE_CLIENT_FIELDS);
+  for (const [key, value] of Object.entries(clientData)) {
+    if (!value) continue;
+    if (URL_FIELDS.has(key) && !/^https?:\/\/\S+\.\S+/i.test(value)) {
+      return { ok: false, error: `"${value}" isn't a full web address — start it with https://` };
+    }
+    if (EMAIL_FIELDS.has(key) && !/^\S+@\S+\.\S+$/.test(value)) {
+      return { ok: false, error: `"${value}" isn't an email address.` };
+    }
+  }
+
+  const appData = [];
+  for (const app of apps) {
+    const fields = pick(app, INTAKE_APP_FIELDS);
+    const name = fields.app_name || "An app";
+    const over = (v: string | undefined, max: number) => (v ?? "").length > max;
+    if (over(fields.app_name, PLAY_LIMITS.appName))
+      return { ok: false, error: `${name}: the app name is over ${PLAY_LIMITS.appName} characters.` };
+    if (over(fields.short_description, PLAY_LIMITS.shortDescription))
+      return { ok: false, error: `${name}: the short description is over ${PLAY_LIMITS.shortDescription} characters.` };
+    if (over(fields.long_description, PLAY_LIMITS.longDescription))
+      return { ok: false, error: `${name}: the description is over ${PLAY_LIMITS.longDescription} characters.` };
+    appData.push({ id: String(app.id), ...fields });
+  }
+
+  const accountData = [];
+  for (const account of accounts) {
+    const fields = pick(account, INTAKE_ACCOUNT_FIELDS);
+    if (fields.access_email && !/^\S+@\S+$/.test(fields.access_email)) {
+      return { ok: false, error: `"${fields.access_email}" isn't an email address.` };
+    }
+    accountData.push({ id: String(account.id), ...fields });
+  }
+
+  const supabase = await db();
+  const { error } = await supabase.rpc("intake_submit", {
+    p_token: token,
+    p_client: clientData,
+    p_apps: appData,
+    p_accounts: accountData,
+  });
+  if (error) return { ok: false, error: error.message };
+  refresh();
+  return { ok: true };
+}
