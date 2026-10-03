@@ -7,7 +7,7 @@ import { ChevronRightIcon, ExternalLinkIcon, MoreHorizontalIcon, SearchIcon } fr
 import { toast } from "sonner";
 import { AppPreviewSheet } from "@/components/AppPreviewRow";
 import type { AppImages } from "@/lib/appImages";
-import { liveButNotMoved, type StoreInfo } from "@/lib/storeWatch";
+import { liveButNotMoved, timeAgo, type StoreInfo } from "@/lib/storeWatch";
 import { DrawerPublishButton } from "@/components/PublishPanel";
 import { StatusMenuItems } from "@/components/RowActions";
 import { StatusGlyph } from "@/components/StatusGlyph";
@@ -389,7 +389,7 @@ export function StatusBoard({
                         row={r}
                         badge={badges[r.project_name]}
                         status={statusOf(r)}
-                        liveNow={liveNow(r)}
+                        live={liveNow(r) ? (stores[r.product_id] ?? null) : null}
                         dragging={dragId === r.id}
                         onDragStart={(e) => {
                           e.dataTransfer.setData("text/plain", r.id);
@@ -491,7 +491,7 @@ function BoardCard({
   row,
   badge,
   status,
-  liveNow,
+  live,
   dragging,
   onDragStart,
   onDragEnd,
@@ -501,8 +501,8 @@ function BoardCard({
   row: AppRow;
   badge?: LineBadge;
   status: AppStatus;
-  /** The store already shows this release; it's waiting to be moved to Production. */
-  liveNow: boolean;
+  /** Set when the store already shows this release and it's waiting to be moved to Production. */
+  live: StoreInfo | null;
   dragging: boolean;
   onDragStart: (e: DragEvent) => void;
   onDragEnd: () => void;
@@ -521,9 +521,13 @@ function BoardCard({
         if ((e.target as HTMLElement).closest("a, button, [role=menuitem]")) return;
         onOpen();
       }}
-      className={`group cursor-grab rounded-lg border bg-card p-2.5 shadow-xs transition
+      className={`group cursor-grab overflow-hidden rounded-lg border bg-card p-2.5 shadow-xs transition
                   hover:border-ring/60 hover:shadow-sm active:cursor-grabbing ${
                     dragging ? "opacity-40" : ""
+                  } ${
+                    live
+                      ? "ring-2 ring-[var(--st-production)]/50 shadow-[0_0_0_4px_color-mix(in_oklch,var(--st-production)_12%,transparent)]"
+                      : ""
                   }`}
       style={{ borderLeftColor: STATUSES[status].hex, borderLeftWidth: 3 }}
     >
@@ -565,18 +569,6 @@ function BoardCard({
         </DropdownMenu>
       </div>
 
-      {liveNow && (
-        <div
-          className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-good-soft px-2 py-0.5 text-[11px] font-semibold text-good"
-          title="The store already shows this version — move it to Production"
-        >
-          <span className="relative flex size-1.5">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-good opacity-60" />
-            <span className="relative inline-flex size-1.5 rounded-full bg-good" />
-          </span>
-          Live on store
-        </div>
-      )}
       <div className="mt-2 flex items-center gap-1.5">
         <StoreIcon platform={row.platform} size={13} />
         {row.build_version && (
@@ -607,6 +599,43 @@ function BoardCard({
           <TooltipContent>{row.assignee_name ?? "Unassigned"}</TooltipContent>
         </Tooltip>
       </div>
+
+      {/* The store already has this release — say so, loudly, with the one click it needs. */}
+      {live && (
+        <div className="-mx-2.5 -mb-2.5 mt-2.5 border-t border-[var(--st-production)]/25 bg-good-soft px-2.5 py-2">
+          <div className="flex items-center gap-1.5">
+            <span className="relative flex size-2 shrink-0">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--st-production)] opacity-60" />
+              <span className="relative inline-flex size-2 rounded-full bg-[var(--st-production)]" />
+            </span>
+            <StoreIcon platform={row.platform} size={12} />
+            <span className="truncate text-[12px] font-semibold text-good">
+              Live on {PLATFORMS[row.platform].label}
+            </span>
+            {live.version && (
+              <span className="ml-auto shrink-0 rounded bg-card px-1.5 font-mono text-[11px] font-semibold text-good ring-1 ring-[var(--st-production)]/30">
+                v{live.version}
+              </span>
+            )}
+          </div>
+          <div className="mt-1.5 flex items-center justify-between gap-2">
+            <span
+              className="truncate text-[11px] text-muted-foreground"
+              title={live.updatedAt ? `The store updated it ${new Date(live.updatedAt).toLocaleString()}` : undefined}
+            >
+              {live.updatedAt ? timeAgo(live.updatedAt) : "now"}
+            </span>
+            <button
+              type="button"
+              onClick={() => onMove("production")}
+              className="shrink-0 rounded-md bg-[var(--st-production)] px-2 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:brightness-110"
+              title="Mark it Production in the tracker"
+            >
+              Move to Production →
+            </button>
+          </div>
+        </div>
+      )}
     </article>
   );
 }

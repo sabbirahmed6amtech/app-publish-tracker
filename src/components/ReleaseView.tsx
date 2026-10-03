@@ -5,7 +5,7 @@ import { AppPreviewRow } from "@/components/AppPreviewRow";
 import { imagesOf } from "@/lib/appImages";
 import { DrawerPublishButton } from "@/components/PublishPanel";
 import { isFirstPublish } from "@/lib/publish";
-import { liveButNotMoved, storeInfoOf } from "@/lib/storeWatch";
+import { liveButNotMoved, storeInfoOf, timeAgo } from "@/lib/storeWatch";
 import { InlineAssignee, InlineText } from "@/components/InlineEdit";
 import { ReleaseDialog } from "@/components/dialogs/ReleaseDialog";
 import { SubmissionDialog } from "@/components/dialogs/SubmissionDialog";
@@ -254,19 +254,26 @@ export function ReleaseView({
                       <td className="td">
                         <div className="flex items-center gap-2">
                           <StatusSelect appId={app.id} status={app.status} />
-                          {liveButNotMoved(
-                            storeInfoOf(products.find((p) => p.id === app.product_id)),
-                            app.status,
-                            app.build_version,
-                            release.version,
-                          ) && (
-                            <span
-                              className="whitespace-nowrap rounded-full bg-good-soft px-2 py-0.5 text-[11px] font-semibold text-good"
-                              title="The store already shows this version — move it to Production"
-                            >
-                              Live on store
-                            </span>
-                          )}
+                          {(() => {
+                            const store = storeInfoOf(products.find((p) => p.id === app.product_id));
+                            if (!liveButNotMoved(store, app.status, app.build_version, release.version)) return null;
+                            return (
+                              <span
+                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-good-soft px-2 py-0.5 text-[11px] font-semibold text-good ring-1 ring-[var(--st-production)]/30"
+                                title={`${PLATFORMS[platform].label} already shows this version — move it to Production`}
+                              >
+                                <span className="relative flex size-1.5">
+                                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--st-production)] opacity-60" />
+                                  <span className="relative inline-flex size-1.5 rounded-full bg-[var(--st-production)]" />
+                                </span>
+                                Live on {PLATFORMS[platform].label}
+                                {store?.version && <span className="font-mono">v{store.version}</span>}
+                                {store?.updatedAt && (
+                                  <span className="font-normal text-muted-foreground">· {timeAgo(store.updatedAt)}</span>
+                                )}
+                              </span>
+                            );
+                          })()}
                           {isStale(app.status, app.status_changed_at) && (
                             <span
                               className="text-[11px] font-medium text-warn"

@@ -6,11 +6,11 @@ import { StatusChip } from "@/components/StatusChip";
 import { CopyButton } from "@/components/CopyButton";
 import { CodeEditor } from "@/components/CodeEditor";
 import { KeystoreDownloadButton } from "@/components/KeystoreDownloadButton";
-import { formatDate, PLATFORMS } from "@/lib/constants";
+import { formatDate, PLATFORMS, STATUSES } from "@/lib/constants";
 import { ImageIcon } from "lucide-react";
 import type { AppImages } from "@/lib/appImages";
 import { StoreCheckButton } from "@/components/StoreCheckButton";
-import { liveButNotMoved, type StoreInfo } from "@/lib/storeWatch";
+import { liveButNotMoved, timeAgo, type StoreInfo } from "@/lib/storeWatch";
 import type { App, Keystore, Platform } from "@/lib/types";
 
 // Clicks on these keep doing their own job instead of opening the preview.
@@ -128,11 +128,30 @@ export function AppPreviewSheet({
       subtitle={app.app_name ? app.project_name : undefined}
     >
       {liveNow && (
-        <div className="border-b bg-good-soft px-5 py-3 text-[13px]">
-          <p className="font-semibold text-good">Live on {storeName} as v{store?.version}</p>
-          <p className="text-[12px] text-muted-foreground">
-            The store already has this version. Move it to Production when you&apos;re ready.
-          </p>
+        <div className="flex items-start gap-3 border-b bg-good-soft px-5 py-3.5">
+          <span className="relative mt-1.5 flex size-2.5 shrink-0">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--st-production)] opacity-60" />
+            <span className="relative inline-flex size-2.5 rounded-full bg-[var(--st-production)]" />
+          </span>
+          <div className="min-w-0 text-[13px]">
+            <p className="font-semibold text-good">
+              Live on {storeName} · v{store?.version}
+            </p>
+            <p className="text-[12px] text-muted-foreground">
+              {store?.updatedAt ? `The store updated ${timeAgo(store.updatedAt)}. ` : ""}
+              The tracker still says {STATUSES[app.status].label} — move it to Production.
+            </p>
+            {store?.url && (
+              <a
+                href={store.url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 inline-block text-[12px] font-medium text-good hover:underline"
+              >
+                See it on the store →
+              </a>
+            )}
+          </div>
         </div>
       )}
       {publish && <div className="border-b px-5 py-3">{publish}</div>}
